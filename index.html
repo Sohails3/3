@@ -6,8 +6,7 @@
 <title>My Projects</title>
 <style>
   html, body {
-    margin: 0; 
-    padding: 40px;
+    margin: 0; padding: 40px;
     height: 100vh;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     background: linear-gradient(90deg, #f0f4f8, #d9e2ec);
@@ -23,7 +22,6 @@
     border-radius: 12px;
     padding: 30px 40px;
     box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-    box-sizing: border-box;
   }
 
   h1 {
@@ -35,7 +33,6 @@
   ul.projects-list {
     list-style: none;
     padding-left: 0;
-    margin: 0;
   }
 
   ul.projects-list li {
@@ -47,6 +44,7 @@
     color: #2d3748;
     transition: background-color 0.3s ease-in-out;
     position: relative;
+    cursor: pointer;
   }
 
   ul.projects-list li:hover {
@@ -72,40 +70,17 @@
     transition: max-height 0.4s ease, opacity 0.4s ease;
   }
 
-  /* Show summary on hover of the whole li */
-  ul.projects-list li:hover .summary-text {
-    max-height: 150px; /* enough for your summaries */
+  /* Show summary when active */
+  .summary-text.active {
+    max-height: 150px; /* adjust if needed */
     opacity: 1;
   }
 
-  /* Responsive tweaks */
-  @media (max-width: 480px) {
-    html, body {
-      padding: 20px 15px;
-      height: auto;
-      align-items: flex-start;
-    }
-
-    .box {
-      padding: 20px 25px;
-      box-shadow: none;
-      border-radius: 10px;
-    }
-
-    h1 {
-      font-size: 1.6rem;
-      margin-bottom: 20px;
-    }
-
-    ul.projects-list li {
-      font-size: 1rem;
-      padding: 12px 16px;
-    }
-
-    .summary-text {
-      font-size: 0.9rem;
-      max-height: 120px;
-    }
+  /* Change text color on hover or when active */
+  ul.projects-list li:hover a.project-link,
+  ul.projects-list li .summary-text.active + a.project-link,
+  ul.projects-list li .summary-text.active ~ a.project-link {
+    color: #1a365d;
   }
 </style>
 </head>
@@ -169,7 +144,36 @@
         </div>
       </li>
     </ul>
+
+    <footer style="margin-top: 40px; text-align: center; font-size: 0.9rem; color: #2a4365;">
+      <p>sohail.shaikhy@outlook.com | <a href="https://www.linkedin.com/in/sohailshaikh-eng" target="_blank" rel="noopener" style="color:#2a4365; text-decoration: underline;">LinkedIn</a></p>
+    </footer>
   </section>
+
+<script>
+  // Toggle summary on project title click
+  document.querySelectorAll('.projects-list li').forEach(li => {
+    const link = li.querySelector('.project-link');
+    const summary = li.querySelector('.summary-text');
+
+    // Toggle summary without navigating away (tap behavior)
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      summary.classList.toggle('active');
+    });
+
+    // Optional: close other summaries when one is opened
+    // Uncomment below to allow only one open summary at a time
+    /*
+    link.addEventListener('click', e => {
+      e.preventDefault();
+      document.querySelectorAll('.summary-text.active').forEach(activeSummary => {
+        if (activeSummary !== summary) activeSummary.classList.remove('active');
+      });
+      summary.classList.toggle('active');
+    });
+    */
+  });
+</script>
 </body>
 </html>
-
