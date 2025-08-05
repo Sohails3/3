@@ -58,25 +58,21 @@
     display: inline-block;
   }
 
-  /* Summary hidden by default */
   .summary-text {
     color: #4a5568;
     font-size: 0.95rem;
     margin-top: 8px;
-
     max-height: 0;
     overflow: hidden;
     opacity: 0;
     transition: max-height 0.4s ease, opacity 0.4s ease;
   }
 
-  /* Show summary when active */
   .summary-text.active {
-    max-height: 150px; /* adjust if needed */
+    max-height: 150px;
     opacity: 1;
   }
 
-  /* Change text color on hover or when active */
   ul.projects-list li:hover a.project-link,
   ul.projects-list li .summary-text.active + a.project-link,
   ul.projects-list li .summary-text.active ~ a.project-link {
@@ -144,28 +140,29 @@
   </section>
 
 <script>
-  // Toggle summary on project title click
   document.querySelectorAll('.projects-list li').forEach(li => {
     const link = li.querySelector('.project-link');
     const summary = li.querySelector('.summary-text');
+    let clickedOnce = false;
 
-    // Toggle summary without navigating away (tap behavior)
     link.addEventListener('click', e => {
-      e.preventDefault();
-      summary.classList.toggle('active');
+      if (!summary.classList.contains('active')) {
+        e.preventDefault(); // Stop link on first click
+        summary.classList.add('active');
+        clickedOnce = true;
+      } else {
+        // On second click, allow navigation
+        clickedOnce = false;
+      }
     });
 
-    // Optional: close other summaries when one is opened
-    // Uncomment below to allow only one open summary at a time
-    /*
-    link.addEventListener('click', e => {
-      e.preventDefault();
-      document.querySelectorAll('.summary-text.active').forEach(activeSummary => {
-        if (activeSummary !== summary) activeSummary.classList.remove('active');
-      });
-      summary.classList.toggle('active');
+    // Optional: hide summary if user clicks another project
+    document.addEventListener('click', event => {
+      if (!li.contains(event.target)) {
+        summary.classList.remove('active');
+        clickedOnce = false;
+      }
     });
-    */
   });
 </script>
 </body>
