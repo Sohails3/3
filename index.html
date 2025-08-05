@@ -1,81 +1,134 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>My Projects</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>My Projects</title>
+<style>
+  html, body {
+    margin: 0; padding: 40px;
+    height: 100vh;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+    background: linear-gradient(90deg, #f0f4f8, #d9e2ec);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
 
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', sans-serif;
-      background-color: #f6f8fa;
-      color: #333;
-    }
+  .box {
+    max-width: 600px;
+    width: 100%;
+    background: white;
+    border-radius: 12px;
+    padding: 30px 40px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+  }
 
-    .wrapper {
-      max-width: 700px;
-      margin: 60px auto;
-      padding: 0 20px;
-    }
+  h1 {
+    text-align: center;
+    color: #2a4365;
+    margin-bottom: 30px;
+  }
 
-    h1 {
-      font-size: 2rem;
-      margin-bottom: 25px;
-      color: #1a202c;
-      border-bottom: 2px solid #ddd;
-      padding-bottom: 10px;
-    }
+  ul.projects-list {
+    list-style: none;
+    padding-left: 0;
+  }
 
-    ul.projects {
-      list-style: none;
-      padding-left: 0;
-    }
+  ul.projects-list li {
+    background-color: #edf2f7;
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    font-size: 1.1rem;
+    color: #2d3748;
+    transition: background-color 0.3s ease-in-out;
+    position: relative;
+  }
 
-    ul.projects li {
-      background: #fff;
-      padding: 16px 20px;
-      margin-bottom: 12px;
-      border-left: 4px solid #3182ce;
-      border-radius: 6px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-      transition: transform 0.15s ease;
-    }
+  ul.projects-list li:hover {
+    background-color: #cbd5e0;
+  }
 
-    ul.projects li:hover {
-      transform: translateX(4px);
-      background-color: #f0f4f8;
-    }
+  a.project-link {
+    text-decoration: none;
+    font-weight: bold;
+    color: #2a4365;
+    display: inline-block;
+  }
 
-    footer {
-      text-align: center;
-      font-size: 0.85em;
-      color: #777;
-      margin-top: 40px;
-    }
-  </style>
+  /* Summary hidden by default */
+  .summary-text {
+    color: #4a5568;
+    font-size: 0.95rem;
+    margin-top: 8px;
+
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.4s ease, opacity 0.4s ease;
+  }
+
+  /* Show summary on hover of the whole li */
+  ul.projects-list li:hover .summary-text {
+    max-height: 150px; /* enough for your summaries */
+    opacity: 1;
+  }
+</style>
 </head>
 <body>
-  <div class="wrapper">
-    <h1>My Projects</h1>
-    <ul class="projects">
-      <li>P&amp;ID Control System</li>
-      <li>Process Engineering Workflow</li>
-      <li>Cooling Tunnel Design (Thermal Analysis)</li>
-      <li>Confectionary Production Line</li>
-      <li>Adjustments to Toyota MR2 (Mk2)</li>
-      <li>Arduino-Based Sensor Module</li>
-      <li>Electric Bicycle Conversion Kit</li>
-    </ul>
+  <section class="box">
+    <h1>Project Titles</h1>
+    <ul class="projects-list">
+      <li>
+        <a href="projects/pid-control.html" class="project-link">P&amp;ID Control</a>
+        <div class="summary-text">
+          Designed a piping and instrumentation diagram control system with safety interlocks and sensor integration.
+        </div>
+      </li>
 
-    <footer>
-      &copy; 2025 Your Name
-    </footer>
-  </div>
+      <li>
+        <a href="projects/process-engineering.html" class="project-link">Process Engineering</a>
+        <div class="summary-text">
+          Streamlined workflows for a multi-line manufacturing process to improve efficiency and reduce waste.
+        </div>
+      </li>
+
+      <li>
+        <a href="projects/cooling-tunnel.html" class="project-link">Using Fluid Mechanics and Heat Transfer to Design a Cooling Tunnel</a>
+        <div class="summary-text">
+          Applied heat transfer principles to design a cooling tunnel for confectionary products with optimal airflow.
+        </div>
+      </li>
+
+      <li>
+        <a href="projects/confectionary.html" class="project-link">Confectionary Manufacturing Design Project</a>
+        <div class="summary-text">
+          Developed a scalable production line design for gummy candies, including starch molding and drying systems.
+        </div>
+      </li>
+
+      <li>
+        <a href="projects/mr2-adjustments.html" class="project-link">Toyota MR2 Adjustments</a>
+        <div class="summary-text">
+          Performed suspension tuning, ECU modifications, and aerodynamic improvements on a 1994 Toyota MR2.
+        </div>
+      </li>
+
+      <li>
+        <a href="projects/arduino-module.html" class="project-link">Arduino Microcontroller</a>
+        <div class="summary-text">
+          Built a temperature and humidity data logger using an Arduino with serial communication monitoring.
+        </div>
+      </li>
+
+      <li>
+        <a href="projects/e-bike.html" class="project-link">Electric Bike Conversion</a>
+        <div class="summary-text">
+          Converted a regular bike into an electric assist bike with a 250W motor and custom battery pack.
+        </div>
+      </li>
+    </ul>
+  </section>
 </body>
 </html>
