@@ -6,8 +6,9 @@
 <title>My Projects</title>
 <style>
   html, body {
-    margin: 0; padding: 40px;
+    margin: 0;
     height: 100vh;
+    overflow: hidden;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     background: linear-gradient(90deg, #f0f4f8, #d9e2ec);
     display: flex;
@@ -20,8 +21,10 @@
     width: 100%;
     background: white;
     border-radius: 12px;
-    padding: 30px 40px;
+    padding: 70px 40px;
     box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    overflow-y: auto;
+    max-height: 90vh;
   }
 
   h1 {
@@ -42,9 +45,6 @@
     margin-bottom: 12px;
     font-size: 1.1rem;
     color: #2d3748;
-    transition: background-color 0.3s ease-in-out;
-    position: relative;
-    cursor: pointer;
   }
 
   ul.projects-list li:hover {
@@ -59,12 +59,7 @@
     transition: color 0.3s ease;
   }
 
-  /* Change link color on hover of the text itself */
-  a.project-link:hover {
-    color: #1a365d;
-  }
-
-  /* Change link color when hovering anywhere on the li */
+  a.project-link:hover,
   ul.projects-list li:hover a.project-link {
     color: #1a365d;
   }
@@ -73,21 +68,6 @@
     color: #4a5568;
     font-size: 0.95rem;
     margin-top: 8px;
-    max-height: 0;
-    overflow: hidden;
-    opacity: 0;
-    transition: max-height 0.4s ease, opacity 0.4s ease;
-  }
-
-  .summary-text.active {
-    max-height: 150px;
-    opacity: 1;
-  }
-
-  ul.projects-list li:hover a.project-link,
-  ul.projects-list li .summary-text.active + a.project-link,
-  ul.projects-list li .summary-text.active ~ a.project-link {
-    color: #1a365d;
   }
 </style>
 </head>
@@ -95,7 +75,7 @@
   <section class="box">
     <h1>Projects</h1>
     <ul class="projects-list">
-      
+
       <li>
         <a href="cooling-tunnel.html" class="project-link">Using Fluid Mechanics and Heat Transfer to Design a Cooling Tunnel</a>
         <div class="summary-text">
@@ -109,7 +89,7 @@
           Streamlined workflows for a multi-line manufacturing process to improve efficiency and reduce waste.
         </div>
       </li>
-      
+
       <li>
         <a href="pid-control.html" class="project-link">PID Control</a>
         <div class="summary-text">
@@ -150,33 +130,6 @@
       <p>sohail.shaikhy@outlook.com | <a href="https://www.linkedin.com/in/sohailshaikh-eng" target="_blank" rel="noopener" style="color:#2a4365; text-decoration: underline;">LinkedIn</a></p>
     </footer>
   </section>
-
-<script>
-  document.querySelectorAll('.projects-list li').forEach(li => {
-    const link = li.querySelector('.project-link');
-    const summary = li.querySelector('.summary-text');
-    let clickedOnce = false;
-
-    link.addEventListener('click', e => {
-      if (!summary.classList.contains('active')) {
-        e.preventDefault(); // Stop link on first click
-        summary.classList.add('active');
-        clickedOnce = true;
-      } else {
-        // On second click, allow navigation
-        clickedOnce = false;
-      }
-    });
-
-    // Optional: hide summary if user clicks another project
-    document.addEventListener('click', event => {
-      if (!li.contains(event.target)) {
-        summary.classList.remove('active');
-        clickedOnce = false;
-      }
-    });
-  });
-</script>
 </body>
 </html>
 
