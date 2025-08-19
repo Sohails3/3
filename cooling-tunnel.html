@@ -3,199 +3,95 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cooling Tunnel Design Project</title>
+  <title>P&ID Control</title>
   <style>
-    * {
-      box-sizing: border-box;
+    html, body {
+      overflow: hidden;
+      height: 100vh;
       margin: 0;
       padding: 0;
-    }
-    
-    body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background: linear-gradient(to right, #f0f4f8, #d9e2ec);
       color: #2a4365;
-      line-height: 1.6;
-      min-height: 100vh;
-      padding: 20px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
     }
-    
+
     .container {
       background-color: white;
       width: 95%;
       max-width: 1200px;
-      padding: 30px;
+      padding: 20px;
       border-radius: 12px;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+      height: 90vh;
+      margin: 20px auto;
       display: flex;
       flex-direction: column;
-      height: 95vh;
     }
-    
-    .header {
-      padding-bottom: 20px;
-      border-bottom: 1px solid #eaeaea;
-      margin-bottom: 20px;
-    }
-    
+
     a.back-link {
       text-decoration: none;
       color: #2a4365;
-      font-weight: 600;
-      display: inline-flex;
-      align-items: center;
+      font-weight: bold;
+      display: inline-block;
       margin-bottom: 15px;
-      padding: 8px 16px;
-      border-radius: 6px;
-      transition: all 0.3s ease;
-      background-color: #f0f4f8;
+      padding: 5px 10px;
+      border-radius: 4px;
+      transition: background-color 0.2s;
     }
-    
+
     a.back-link:hover {
       color: #1a365d;
-      background-color: #e1e8f0;
-      transform: translateX(-3px);
+      background-color: #f0f4f8;
     }
-    
+
     h1 {
-      font-size: 2.2rem;
-      margin-bottom: 12px;
-      color: #1a365d;
+      margin-top: 0;
+      font-size: 1.8rem;
     }
-    
+
     p {
       color: #2d3748;
-      line-height: 1.6;
-      margin-bottom: 20px;
-      font-size: 1.1rem;
+      line-height: 1.5;
+      margin-bottom: 15px;
     }
-    
+
     .pdf-container {
       flex: 1;
+      overflow: auto;
       border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
       position: relative;
-      background-color: #f8fafc;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 500px;
     }
-    
+
     #pdf-viewer {
       width: 100%;
       height: 100%;
       border: none;
     }
-    
-    .loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 20px;
-    }
-    
-    .spinner {
-      width: 50px;
-      height: 50px;
-      border: 5px solid #e2e8f0;
-      border-top: 5px solid #2b6cb0;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    
-    .error-message {
-      text-align: center;
-      padding: 20px;
-      color: #e53e3e;
-    }
-    
-    .error-message h3 {
-      margin-bottom: 10px;
-    }
-    
-    .help-text {
-      font-size: 0.9rem;
-      color: #718096;
-      margin-top: 10px;
-    }
-    
+
     @media (max-width: 768px) {
       .container {
         width: 100%;
         height: 100vh;
         margin: 0;
         border-radius: 0;
-        padding: 20px;
-      }
-      
-      h1 {
-        font-size: 1.8rem;
-      }
-      
-      p {
-        font-size: 1rem;
+        padding: 15px;
       }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <a class="back-link" href="../index.html">&larr; Back to Projects</a>
-      <h1>Design Project of Manufacturing Component</h1>
-      <p>
-        Investigation of Computational Fluid Dynamics and Heat Transfer to design a Cooling Tunnel 
-      </p>
-    </div>
+    <a class="back-link" href="../index.html">&larr; Back to Projects</a>
+    <h1>Design Project of Manufacturing Component</h1>
+    <p>
+      Investigation of Computational Fluid Dynamics and Heat Transfer to design a Cooling Tunnel 
+    </p>
 
     <div class="pdf-container">
-      <div class="loading">
-        <div class="spinner"></div>
-        <p>Loading PDF document...</p>
-      </div>
+      <iframe id="pdf-viewer" src="Cooling-Tunnel.pdf#toolbar=0&navpanes=0&scrollbar=0" title="Report"></iframe>
     </div>
   </div>
-
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      const pdfContainer = document.querySelector('.pdf-container');
-      const loadingElement = document.querySelector('.loading');
-      
-      // Simulate loading time (remove this in production)
-      setTimeout(() => {
-        // Try to embed the PDF
-        const iframe = document.createElement('iframe');
-        iframe.id = 'pdf-viewer';
-        iframe.src = 'Cooling-Tunnel.pdf#toolbar=0&navpanes=0&scrollbar=0';
-        iframe.onload = function() {
-          loadingElement.style.display = 'none';
-        };
-        iframe.onerror = function() {
-          // If PDF fails to load, show error message
-          loadingElement.innerHTML = `
-            <div class="error-message">
-              <h3>Failed to load PDF document</h3>
-              <p>The Cooling-Tunnel.pdf file could not be loaded.</p>
-              <p class="help-text">Please make sure the PDF file exists in the same directory as this HTML file.</p>
-            </div>
-          `;
-        };
-        
-        pdfContainer.appendChild(iframe);
-      }, 1500);
-    });
-  </script>
 </body>
 </html>
 
