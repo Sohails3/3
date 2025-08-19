@@ -4,16 +4,23 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>My Projects</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
   html, body {
     margin: 0;
-    height: 100%;
-    overflow: hidden;
+    min-height: 100vh;
     font-family: Verdana, Geneva, Tahoma, sans-serif;
     background: linear-gradient(90deg, #f0f4f8, #d9e2ec);
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
+    padding: 20px;
   }
 
   .box {
@@ -21,44 +28,62 @@
     width: 100%;
     background: white;
     border-radius: 12px;
-    padding: 40px;
+    padding: 30px 25px;
     box-shadow: 0 8px 20px rgba(0,0,0,0.1);
-    /* Removed overflow-y: auto and max-height properties */
+    margin: 20px 0;
   }
 
   h1 {
     text-align: center;
     color: #2a4365;
-    margin-bottom: 20px;
-    font-size: 1.8rem; /* Slightly smaller heading */
+    margin-bottom: 25px;
+    font-size: 1.8rem;
   }
 
   ul.projects-list {
     list-style: none;
     padding-left: 0;
-    margin: 0; /* Remove default margin */
+    margin: 0;
   }
 
   ul.projects-list li {
     background-color: #edf2f7;
-    padding: 12px 15px; /* Slightly reduced padding */
+    padding: 15px 15px 15px 60px; /* Added left padding for icon space */
     border-radius: 8px;
-    margin-bottom: 10px; /* Reduced margin */
-    font-size: 1rem; /* Slightly smaller font */
+    margin-bottom: 12px;
+    font-size: 1rem;
     color: #2d3748;
+    transition: background-color 0.3s ease;
+    position: relative;
   }
 
   ul.projects-list li:hover {
     background-color: #cbd5e0;
   }
 
+  .project-icon {
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #2a4365;
+    font-size: 1.4rem;
+  }
+
   a.project-link {
     text-decoration: none;
     font-weight: bold;
     color: #2a4365;
-    display: inline-block;
+    display: block;
     transition: color 0.3s ease;
-    font-size: 0.95rem; /* Slightly smaller font */
+    font-size: 1rem;
+    margin-bottom: 5px;
+    line-height: 1.4;
   }
 
   a.project-link:hover,
@@ -68,21 +93,89 @@
 
   .summary-text {
     color: #4a5568;
-    font-size: 0.85rem; /* Slightly smaller font */
-    margin-top: 6px; /* Reduced margin */
-    line-height: 1.4; /* Better line spacing */
+    font-size: 0.9rem;
+    margin-top: 8px;
+    line-height: 1.5;
   }
 
   footer {
-    margin-top: 30px; /* Reduced margin */
+    margin-top: 35px;
     text-align: center;
-    font-size: 0.85rem; /* Slightly smaller font */
+    font-size: 0.9rem;
     color: #2a4365;
+    padding-top: 15px;
+    border-top: 1px solid rgba(0,0,0,0.1);
   }
 
   footer a {
     color: #2a4365;
     text-decoration: underline;
+  }
+
+  /* Mobile responsiveness */
+  @media (max-width: 600px) {
+    body {
+      align-items: flex-start;
+      padding: 10px;
+      display: block;
+      height: auto;
+      overflow-y: auto;
+    }
+    
+    .box {
+      padding: 20px 15px;
+      margin: 10px 0;
+      border-radius: 10px;
+    }
+    
+    h1 {
+      font-size: 1.6rem;
+      margin-bottom: 20px;
+    }
+    
+    ul.projects-list li {
+      padding: 12px 12px 12px 50px; /* Adjusted for mobile */
+    }
+    
+    .project-icon {
+      width: 30px;
+      height: 30px;
+      font-size: 1.2rem;
+      left: 12px;
+    }
+    
+    a.project-link {
+      font-size: 0.95rem;
+    }
+    
+    .summary-text {
+      font-size: 0.85rem;
+    }
+  }
+
+  @media (max-width: 400px) {
+    h1 {
+      font-size: 1.4rem;
+    }
+    
+    a.project-link {
+      font-size: 0.9rem;
+    }
+    
+    footer {
+      font-size: 0.85rem;
+    }
+    
+    ul.projects-list li {
+      padding: 10px 10px 10px 45px; /* Further adjusted for very small screens */
+    }
+    
+    .project-icon {
+      width: 28px;
+      height: 28px;
+      font-size: 1.1rem;
+      left: 10px;
+    }
   }
 </style>
 </head>
@@ -92,6 +185,9 @@
     <ul class="projects-list">
 
       <li>
+        <div class="project-icon">
+          <i class="fas fa-wind"></i>
+        </div>
         <a href="cooling-tunnel.html" class="project-link">Using Fluid Mechanics and Heat Transfer to Design a Cooling Tunnel</a>
         <div class="summary-text">
           Applied heat transfer principles to design a cooling tunnel for confectionary products with optimal airflow.
@@ -99,6 +195,9 @@
       </li>
 
       <li>
+        <div class="project-icon">
+          <i class="fas fa-cogs"></i>
+        </div>
         <a href="process-engineering.html" class="project-link">Process Engineering</a>
         <div class="summary-text">
           Streamlined workflows for a multi-line manufacturing process to improve efficiency and reduce waste.
@@ -106,6 +205,9 @@
       </li>
 
       <li>
+        <div class="project-icon">
+          <i class="fas fa-sliders-h"></i>
+        </div>
         <a href="pid-control.html" class="project-link">PID Control</a>
         <div class="summary-text">
           PID control uses proportional, integral, and derivative feedback to regulate a system, and it can model the digestive system by adjusting enzyme secretion or motility to maintain optimal digestion conditions.
@@ -113,6 +215,9 @@
       </li>
 
       <li>
+        <div class="project-icon">
+          <i class="fas fa-car"></i>
+        </div>
         <a href="mr2-adjustment1.html" class="project-link">Toyota MR2 Air Intake Modification</a>
         <div class="summary-text">
           Replacing the MR2's air filter enhances airflow to the engine, boosting performance and throttle response.
@@ -120,6 +225,9 @@
       </li>
 
       <li>
+        <div class="project-icon">
+          <i class="fas fa-tachometer-alt"></i>
+        </div>
         <a href="mr2-adjustment2.html" class="project-link">Toyota MR2 Exhaust Replacement</a>
         <div class="summary-text">
           Upgrading the MR2's exhaust system improves exhaust flow, enhancing engine efficiency, sound, and performance.
@@ -127,6 +235,9 @@
       </li>
 
       <li>
+        <div class="project-icon">
+          <i class="fas fa-microchip"></i>
+        </div>
         <a href="arduino-module.html" class="project-link">Arduino Microcontroller</a>
         <div class="summary-text">
           A microcontroller enables remote control of a kettle by switching its power on or off via Wi-Fi.
@@ -134,6 +245,9 @@
       </li>
 
       <li>
+        <div class="project-icon">
+          <i class="fas fa-bicycle"></i>
+        </div>
         <a href="e-bike.html" class="project-link">Electric Bike Conversion</a>
         <div class="summary-text">
           Converted a regular bike into an electric assist bike.
