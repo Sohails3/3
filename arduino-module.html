@@ -75,6 +75,100 @@
       A Microcontroller can be attached electronically to a motor and be programmed to recieve a wireless input via wifi to trigger the motor and turn a kettle on.
     </p>
 
+    <p>
+    <code>
+      
+    #include <ESP32Servo.h>
+#include <WiFi.h>
+
+const char* ssid = "SKYELY3N";
+const char* password = "KwFnzBdBCQgB";
+
+WiFiServer server(80);  // HTTP server on port 80
+
+const int servoPin = 13;  // Pin where LED is connected
+Servo myServo;
+
+void setup() {
+  Serial.begin(115200);
+
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected to Wi-Fi");
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  myServo.attach(servoPin);   // Use global myServo
+  myServo.write(0);           // Start at 0 degrees
+
+  server.begin();             // Start web server
+}
+
+void loop() {
+  WiFiClient client = server.available();  // Listen for web browser
+
+  if (client) {
+    Serial.println("New Client");
+
+    // Wait until request is fully received
+    String request = "";
+    while (client.connected() && client.available() == 0) {
+      delay(1);
+    }
+
+    while (client.available()) {
+      char c = client.read();
+      request += c;
+    }
+
+    Serial.println(request);  // Show full HTTP request
+
+    // Handle commands
+    if (request.indexOf("GET /on") >= 0) {
+      myServo.write(90);  // Rotate 90 degrees
+      Serial.println("Servo moved to 90°");
+      delay(2000);
+      myServo.write(0);   // Back to 0 degrees
+      Serial.println("Servo moved to 0°");
+    }
+
+    // Send response page
+    client.println("HTTP/1.1 200 OK");
+    client.println("Content-type: text/html");
+    client.println();
+    client.println(R"rawliteral(
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.5">
+        <style>
+          body { font-family: sans-serif; padding: 20px; text-align: center; }
+          button { font-size: 32px; padding: 10px 20px; margin: 10px; }
+        </style>
+        <script>
+          window.onload = () => {
+            document.getElementById('controls').scrollIntoView({ behavior: 'smooth' });
+          };
+        </script>
+      </head>
+      <body>
+        <h1>ESP32 Servo Control</h1>
+        <div id="controls">
+          <p><a href="/on"><button>Kettle on</button></a></p>
+
+        </div>
+      </body>
+      </html>
+    )rawliteral");
+
+  }
+}
+</code>
+</p>
+  
   </div>
 </body>
 </html>
