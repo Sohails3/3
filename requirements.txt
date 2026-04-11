@@ -1,0 +1,10 @@
+python-dotenv          # Load .env credentials
+requests               # HTTP API calls
+google-auth            # Google OAuth base
+google-auth-oauthlib   # Google OAuth flow
+google-auth-httplib2
+google-api-python-client  # Google Sheets, Drive, Slides
+anthropic              # Claude API SDK
+flask                  # Web interface
+gunicorn               # Production WSGI server
+python-docx            # Word document generation

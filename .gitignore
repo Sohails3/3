@@ -1,0 +1,25 @@
+# Credentials & secrets
+.env
+credentials.json
+token.json
+
+# Temporary processing files
+.tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Generated pipeline data (recreated on each run)
+strategic_fit_engine/data/
+strategic_fit_engine/output/
+
+# Word doc lock files
+~$*.docx
+
+# macOS
+.DS_Store
