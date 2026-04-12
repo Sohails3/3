@@ -370,10 +370,11 @@
     <button class="filter-btn" data-filter="control">Control</button>
     <button class="filter-btn" data-filter="mechanical">Mechanical</button>
     <button class="filter-btn" data-filter="electronics">Electronics</button>
+    <button class="filter-btn" data-filter="software">Software</button>
   </div>
 
   <div class="count-bar">
-    <p class="count-text">Showing <span id="countNum">6</span> projects</p>
+    <p class="count-text">Showing <span id="countNum">7</span> projects</p>
   </div>
 
   <div class="projects-grid" id="grid">
@@ -500,6 +501,44 @@
       </div>
     </div>
 
+    <div class="card" data-category="software" style="grid-column: span 2;">
+      <a href="strategic-fit-engine.html" class="card-link-overlay"></a>
+      <div class="card-thumb" style="height:220px;">
+        <span class="card-pill">Software / AI</span>
+        <span class="card-num">07</span>
+        <img src="https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1400&q=80"
+             alt="Strategic Fit Engine"
+             loading="lazy"
+             onerror="this.src='https://picsum.photos/seed/finance/1400/400'">
+        <div style="position:absolute;bottom:20px;left:24px;z-index:2">
+          <p style="font-family:'Space Mono',monospace;font-size:0.6rem;letter-spacing:0.18em;
+            text-transform:uppercase;color:rgba(255,255,255,0.5);margin-bottom:4px">GP Bullhound Format</p>
+          <p style="font-family:'DM Serif Display',serif;font-size:1.5rem;color:#fff;
+            text-shadow:0 2px 12px rgba(0,0,0,0.7)">Strategic Fit Engine</p>
+        </div>
+      </div>
+      <div class="card-body" style="flex-direction:row;gap:32px;align-items:flex-start">
+        <div style="flex:1">
+          <h2 class="card-title" style="font-size:1.05rem">M&A Target Screening — AI-Powered Deal Pipeline</h2>
+          <p class="card-desc">A 4-step agentic workflow that researches a strategic buyer's acquisition DNA, discovers private acquisition targets, scores them across 7 M&A criteria, and outputs an interactive GP Bullhound-style report with DCF valuation — all from three inputs.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;padding-top:2px">
+          <span style="font-family:'Space Mono',monospace;font-size:0.58rem;letter-spacing:0.1em;
+            text-transform:uppercase;color:var(--text-dim)">Stack</span>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <span class="tag">Python</span>
+            <span class="tag">Claude API</span>
+            <span class="tag">Flask / SSE</span>
+            <span class="tag">DCF Model</span>
+          </div>
+        </div>
+        <div class="card-footer" style="margin-top:0;padding-top:0;border-top:none;align-self:flex-end">
+          <span class="card-link-text">View project</span>
+          <i class="fas fa-arrow-up-right card-arrow" style="margin-left:8px"></i>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <footer class="footer">
@@ -539,6 +578,10 @@
       cards.forEach(card => {
         const match = filter === 'all' || card.dataset.category === filter;
         card.style.display = match ? '' : 'none';
+        // restore span-2 for the featured card when visible
+        if (card.dataset.category === 'software') {
+          card.style.gridColumn = match ? 'span 2' : '';
+        }
         if (match) visible++;
       });
       countNum.textContent = visible;
