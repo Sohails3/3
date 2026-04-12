@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sohail Shaikh — Projects</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2234;
+    --border: rgba(99, 179, 237, 0.15);
+    --accent: #63b3ed;
+    --accent2: #4fd1c5;
+    --text: #e2e8f0;
+    --text-muted: #718096;
+    --text-dim: #4a5568;
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(99, 179, 237, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 179, 237, 0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .blob { position: fixed; border-radius: 50%; filter: blur(120px); pointer-events: none; z-index: 0; }
+  .blob-1 { width: 500px; height: 500px; background: radial-gradient(circle, #63b3ed, transparent); top: -150px; left: -150px; opacity: 0.15; }
+  .blob-2 { width: 400px; height: 400px; background: radial-gradient(circle, #4fd1c5, transparent); bottom: -100px; right: -100px; opacity: 0.12; }
+
+  .wrapper { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 70px 28px 60px; }
+
+  /* Header */
+  .header { margin-bottom: 52px; }
+
+  .label {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 12px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease forwards 0.1s;
+  }
+
+  h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(2.4rem, 6vw, 3.8rem);
+    line-height: 1.1;
+    color: var(--text);
+    opacity: 0;
+    animation: fadeUp 0.7s ease forwards 0.25s;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+
+  .header-desc {
+    margin-top: 16px;
+    font-size: 1rem;
+    color: var(--text-muted);
+    max-width: 440px;
+    line-height: 1.7;
+    opacity: 0;
+    animation: fadeUp 0.7s ease forwards 0.4s;
+  }
+
+  .divider {
+    margin-top: 32px;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+    opacity: 0;
+    animation: fadeUp 0.6s ease forwards 0.5s;
+  }
+
+  /* Filters */
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 28px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease forwards 0.55s;
+  }
+
+  .filter-btn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 100px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(99, 179, 237, 0.08);
+  }
+
+  .count-bar { margin-bottom: 20px; opacity: 0; animation: fadeUp 0.6s ease forwards 0.6s; }
+  .count-text { font-family: 'Space Mono', monospace; font-size: 0.68rem; color: var(--text-dim); letter-spacing: 0.15em; text-transform: uppercase; }
+  .count-text span { color: var(--accent); }
+
+  /* Grid */
+  .projects-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  /* Card */
+  .card {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.35s, box-shadow 0.35s, transform 0.35s;
+    opacity: 0;
+    transform: translateY(24px);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .card.visible { animation: fadeUp 0.55s ease forwards; }
+
+  .card:hover {
+    border-color: rgba(99, 179, 237, 0.45);
+    box-shadow: 0 0 0 1px rgba(99, 179, 237, 0.1), 0 24px 50px rgba(0,0,0,0.5), 0 0 50px rgba(99, 179, 237, 0.05);
+    transform: translateY(-5px);
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.45s ease;
+    z-index: 2;
+  }
+  .card:hover::before { transform: scaleX(1); }
+
+  /* Thumbnail */
+  .card-thumb {
+    position: relative;
+    width: 100%;
+    height: 180px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--surface2);
+  }
+
+  .card-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.55s ease, filter 0.55s ease;
+    filter: brightness(0.65) saturate(0.75);
+  }
+
+  .card:hover .card-thumb img {
+    transform: scale(1.07);
+    filter: brightness(0.82) saturate(1.05);
+  }
+
+  .card-thumb::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, transparent 25%, var(--surface) 100%);
+    pointer-events: none;
+  }
+
+  .card-pill {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.58rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: rgba(10, 14, 23, 0.78);
+    border: 1px solid rgba(99, 179, 237, 0.35);
+    color: var(--accent);
+    backdrop-filter: blur(8px);
+  }
+
+  .card-num {
+    position: absolute;
+    top: 13px;
+    right: 14px;
+    z-index: 1;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.6rem;
+    color: rgba(255,255,255,0.35);
+  }
+
+  /* Card body */
+  .card-body {
+    padding: 18px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+
+  .card-title {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text);
+    line-height: 1.4;
+    margin-bottom: 8px;
+    transition: color 0.3s;
+  }
+  .card:hover .card-title { color: #fff; }
+
+  .card-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    line-height: 1.65;
+    flex: 1;
+  }
+
+  .card-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+
+  .tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.57rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--surface2);
+    color: var(--text-dim);
+    border: 1px solid rgba(255,255,255,0.05);
+    transition: border-color 0.3s, color 0.3s;
+  }
+  .card:hover .tag { border-color: rgba(99, 179, 237, 0.2); color: var(--text-muted); }
+
+  .card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+
+  .card-link-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    transition: color 0.3s;
+  }
+  .card:hover .card-link-text { color: var(--accent); }
+
+  .card-arrow {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    transition: color 0.3s, transform 0.3s;
+  }
+  .card:hover .card-arrow { color: var(--accent); transform: translate(3px, -3px); }
+
+  .card-link-overlay { position: absolute; inset: 0; z-index: 10; text-decoration: none; }
+
+  /* Footer */
+  .footer {
+    margin-top: 64px;
+    padding-top: 28px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    opacity: 0;
+    animation: fadeUp 0.6s ease forwards 1s;
+  }
+
+  .footer-left { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--text-dim); letter-spacing: 0.06em; }
+  .footer-left span { color: var(--accent); }
+
+  .footer-links { display: flex; gap: 16px; }
+  .footer-links a {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    transition: color 0.25s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .footer-links a:hover { color: var(--accent); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 680px) {
+    .projects-grid { grid-template-columns: 1fr; }
+    .wrapper { padding: 48px 18px 48px; }
+    h1 { font-size: 2.2rem; }
+    .card-thumb { height: 160px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+
+<div class="wrapper">
+
+  <header class="header">
+    <p class="label">// Engineering Portfolio</p>
+    <h1>Sohail Shaikh - <em>Projects</em></h1>
+    <p class="header-desc">A collection of engineering work spanning fluid dynamics, process design, control systems, and hardware modification.</p>
+    <div class="divider"></div>
+  </header>
+
+  <div class="filters" id="filters">
+    <button class="filter-btn active" data-filter="all">All</button>
+    <button class="filter-btn" data-filter="thermal">Thermal</button>
+    <button class="filter-btn" data-filter="process">Process</button>
+    <button class="filter-btn" data-filter="control">Control</button>
+    <button class="filter-btn" data-filter="mechanical">Mechanical</button>
+    <button class="filter-btn" data-filter="electronics">Electronics</button>
+  </div>
+
+  <div class="count-bar">
+    <p class="count-text">Showing <span id="countNum">6</span> projects</p>
+  </div>
+
+  <div class="projects-grid" id="grid">
+
+    <div class="card" data-category="thermal">
+      <a href="cooling-tunnel.html" class="card-link-overlay"></a>
+      <div class="card-thumb">
+        <span class="card-pill">Thermal</span>
+        <span class="card-num">01</span>
+        <img src="Screenshot 2026-04-06 at 20.32.35.png"
+             alt="Cooling tunnel"
+             loading="lazy"
+             onerror="this.src='https://picsum.photos/seed/coolingtunnel/700/400'">
+      </div>
+      <div class="card-body">
+        <h2 class="card-title">Fluid Mechanics & Heat Transfer for Cooling Tunnel Design</h2>
+        <p class="card-desc">Applied heat transfer principles to design a cooling tunnel for confectionary products with optimal airflow and temperature control.</p>
+        <div class="card-footer">
+          <span class="card-link-text">View project</span>
+          <i class="fas fa-arrow-up-right card-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="process">
+      <a href="process-engineering.html" class="card-link-overlay"></a>
+      <div class="card-thumb">
+        <span class="card-pill">Process</span>
+        <span class="card-num">02</span>
+        <img src="IMG_1017.jpeg"
+             alt="Manufacturing process"
+             loading="lazy"
+          onerror="this.src='https://picsum.photos/seed/coolingtunnel/700/400'">
+      </div>
+      <div class="card-body">
+        <h2 class="card-title">Process Engineering — Multi-Line Manufacturing</h2>
+        <p class="card-desc">Streamlined workflows for a multi-line manufacturing process to improve throughput and reduce material waste using lean methods.</p>
+        
+        <div class="card-footer">
+          <span class="card-link-text">View project</span>
+          <i class="fas fa-arrow-up-right card-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="control">
+      <a href="pid-control.html" class="card-link-overlay"></a>
+      <div class="card-thumb">
+        <span class="card-pill">Control</span>
+        <span class="card-num">03</span>
+        <img src="Screenshot 2026-04-03 at 18.12.09.png"
+             alt="PID control electronics"
+             loading="lazy"
+             onerror="this.src='https://picsum.photos/seed/pidcontrol/700/400'">
+      </div>
+      <div class="card-body">
+        <h2 class="card-title">PID Control — Modelling the Human Digestive System</h2>
+        <p class="card-desc">Modelled the digestive system using PID control, adjusting enzyme secretion and gut motility to maintain optimal digestion conditions.</p>
+        <div class="card-footer">
+          <span class="card-link-text">View project</span>
+          <i class="fas fa-arrow-up-right card-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="mechanical">
+      <a href="mr2-adjustment1.html" class="card-link-overlay"></a>
+      <div class="card-thumb">
+        <span class="card-pill">Mechanical</span>
+        <span class="card-num">04</span>
+        <img src="Screenshot 2026-04-07 at 13.11.17.png"
+             alt="Car engine intake"
+             loading="lazy"
+             onerror="this.src='https://picsum.photos/seed/mr2intake/700/400'">
+      </div>
+      <div class="card-body">
+        <h2 class="card-title">Toyota MR2 — Air Intake Modification</h2>
+        <p class="card-desc">Replaced the factory air filter assembly to reduce intake restriction, improving volumetric efficiency and throttle response across the rev range.</p>
+        <div class="card-footer">
+          <span class="card-link-text">View project</span>
+          <i class="fas fa-arrow-up-right card-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="mechanical">
+      <a href="https://model-me.net" class="card-link-overlay"></a>
+      <div class="card-thumb">
+        <span class="card-pill">Mechanical</span>
+        <span class="card-num">05</span>
+        <img src="Screenshot 2026-04-07 at 13.00.39.png"
+             alt="Rednering Model"
+             loading="lazy"
+             onerror="this.src='https://picsum.photos/seed/mr2exhaust/700/400'">
+      </div>
+      <div class="card-body">
+        <h2 class="card-title">Clothing Modelling Software</h2>
+        <p class="card-desc">An AI powered virtual try on platform using uniquely mapped mannequins and dynamic fabric simulations to visualise realistic garment fit.</p>
+        
+        <div class="card-footer">
+          <span class="card-link-text">View project</span>
+          <i class="fas fa-arrow-up-right card-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" data-category="electronics">
+      <a href="arduino-module.html" class="card-link-overlay"></a>
+      <div class="card-thumb">
+        <span class="card-pill">Electronics</span>
+        <span class="card-num">06</span>
+        <img src="https://images.unsplash.com/photo-1553406830-ef2513450d76?w=700&q=80"
+             alt="Arduino circuit board"
+             loading="lazy"
+             onerror="this.src='https://picsum.photos/seed/arduinoiot/700/400'">
+      </div>
+      <div class="card-body">
+        <h2 class="card-title">Arduino Microcontroller — Wi-Fi Controlled Kettle</h2>
+        <p class="card-desc">Built an IoT relay module using an Arduino to remotely switch mains appliances over Wi-Fi, enabling scheduled and app-controlled power toggling.</p>
+        <div class="card-footer">
+          <span class="card-link-text">View project</span>
+          <i class="fas fa-arrow-up-right card-arrow"></i>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="footer">
+    <p class="footer-left">sohail.shaikhy@outlook.com &nbsp;·&nbsp; <span>Sohail Shaikh</span></p>
+    <div class="footer-links">
+      <a href="mailto:sohail.shaikhy@outlook.com"><i class="fas fa-envelope"></i> Email</a>
+      <a href="https://www.linkedin.com/in/sohailshaikh-eng" target="_blank" rel="noopener"><i class="fab fa-linkedin"></i> LinkedIn</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+  // Scroll reveal
+  const cards = document.querySelectorAll('.card');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        entry.target.style.animationDelay = (i * 0.08) + 's';
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08 });
+  cards.forEach(card => observer.observe(card));
+
+  // Filter
+  const filterBtns = document.querySelectorAll('.filter-btn');
+  const countNum = document.getElementById('countNum');
+
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const filter = btn.dataset.filter;
+      let visible = 0;
+      cards.forEach(card => {
+        const match = filter === 'all' || card.dataset.category === filter;
+        card.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      countNum.textContent = visible;
+    });
+  });
+</script>
+</body>
+</html>
