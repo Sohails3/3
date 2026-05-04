@@ -194,7 +194,7 @@ def _run_pipeline(company: str, sector: str, geography: str,
                 _jobs[session_id]["done"] = True
         _add(session_id, "complete", "Analysis complete! Your report is ready.")
         _notify(
-            f"✅ Report complete — {company}",
+            f"Report complete -- {company}",
             f"Mode: {mode}-side\nCompany: {company}\nSector: {sector}\nGeography: {geography}"
         )
 
@@ -206,7 +206,7 @@ def _run_pipeline(company: str, sector: str, geography: str,
             if session_id in _jobs:
                 _jobs[session_id]["error"] = str(e)
         _notify(
-            f"❌ Report failed — {company}",
+            f"Report failed -- {company}",
             f"Mode: {mode}-side\nCompany: {company}\nSector: {sector}\nGeography: {geography}\nError: {e}"
         )
     finally:
