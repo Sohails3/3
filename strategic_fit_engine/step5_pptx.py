@@ -59,16 +59,31 @@ def _rgb(r: int, g: int, b: int) -> RGBColor:
 
 
 def _solid(shape, color: RGBColor) -> None:
-    from pptx.dml.color import RGBColor as RC
     fill = shape.fill
     fill.solid()
     fill.fore_color.rgb = color
 
 
+def _strip_style(shape) -> None:
+    """Remove the auto-added <p:style> element from a shape.
+
+    python-pptx injects a <p:style> block that references theme colour slots
+    (accent1, lt1, etc.). In a programmatically-built presentation those
+    references are unresolved, which causes PowerPoint to show a repair
+    dialog on every open. Removing the element eliminates the warning.
+    """
+    from pptx.oxml.ns import qn
+    sp = shape._element
+    style = sp.find(qn('p:style'))
+    if style is not None:
+        sp.remove(style)
+
+
 def _add_rect(slide, l, t, w, h, color: RGBColor):
-    shape = slide.shapes.add_shape(1, l, t, w, h)  # MSO_SHAPE_TYPE.RECTANGLE = 1
+    shape = slide.shapes.add_shape(1, l, t, w, h)  # MSO_AUTO_SHAPE_TYPE.RECTANGLE = 1
     _solid(shape, color)
     shape.line.fill.background()
+    _strip_style(shape)
     return shape
 
 
