@@ -65,18 +65,38 @@ def _solid(shape, color: RGBColor) -> None:
 
 
 def _strip_style(shape) -> None:
-    """Remove the auto-added <p:style> element from a shape.
-
-    python-pptx injects a <p:style> block that references theme colour slots
-    (accent1, lt1, etc.). In a programmatically-built presentation those
-    references are unresolved, which causes PowerPoint to show a repair
-    dialog on every open. Removing the element eliminates the warning.
-    """
+    """Remove auto-added <p:style> which references unresolved theme colour slots."""
     from pptx.oxml.ns import qn
     sp = shape._element
     style = sp.find(qn('p:style'))
     if style is not None:
         sp.remove(style)
+
+
+def _fix_spTree(slide) -> None:
+    """Add <a:xfrm> to the slide's <p:grpSpPr> if missing.
+
+    PowerPoint requires the root shape-tree group properties to contain a
+    transform element with zero offsets. python-pptx leaves <p:grpSpPr/>
+    empty, which triggers a repair dialog on open.
+    """
+    from pptx.oxml.ns import qn
+    from lxml import etree
+    try:
+        spTree = slide.shapes._spTree
+        grpSpPr = spTree.find(qn('p:grpSpPr'))
+        if grpSpPr is not None and grpSpPr.find(qn('a:xfrm')) is None:
+            ns = "http://schemas.openxmlformats.org/drawingml/2006/main"
+            xfrm = etree.SubElement(grpSpPr, f"{{{ns}}}xfrm")
+            for tag, attrs in [("off", {"x": "0", "y": "0"}),
+                                ("ext", {"cx": "0", "cy": "0"}),
+                                ("chOff", {"x": "0", "y": "0"}),
+                                ("chExt", {"cx": "0", "cy": "0"})]:
+                el = etree.SubElement(xfrm, f"{{{ns}}}{tag}")
+                for k, v in attrs.items():
+                    el.set(k, v)
+    except Exception:
+        pass  # Never let an XML fix break slide generation
 
 
 def _add_rect(slide, l, t, w, h, color: RGBColor):
@@ -95,6 +115,7 @@ def _add_textbox(slide, text: str, l, t, w, h,
                  bold=False, size=14, color=None, align=PP_ALIGN.LEFT,
                  wrap=True) -> Any:
     from pptx.util import Pt
+    from pptx.oxml.ns import qn
     txb = slide.shapes.add_textbox(l, t, w, h)
     tf  = txb.text_frame
     tf.word_wrap = wrap
@@ -105,6 +126,11 @@ def _add_textbox(slide, text: str, l, t, w, h,
     run.font.bold  = bold
     run.font.size  = Pt(size)
     run.font.color.rgb = color or NAVY
+    # Add lang="en-US" to satisfy OOXML schema — prevents PowerPoint repair dialog
+    rPr = run._r.find(qn('a:rPr'))
+    if rPr is not None:
+        rPr.set('lang', 'en-US')
+        rPr.set('dirty', '0')
     return txb
 
 
@@ -130,7 +156,8 @@ def _score_color(score: int, max_score: int) -> RGBColor:
 
 def _slide_title(prs: Presentation, bp: Dict, ts: Dict, date_str: str) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
-    _solid(slide.background, NAVY)
+    _fix_spTree(slide)
+    _add_rect(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)   # navy background rectangle
 
     # Red accent bar left
     _add_rect(slide, 0, 0, Inches(0.18), SLIDE_H, RED)
@@ -175,6 +202,7 @@ def _slide_title(prs: Presentation, bp: Dict, ts: Dict, date_str: str) -> None:
 
 def _slide_buyer(prs: Presentation, bp: Dict) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fix_spTree(slide)
     _add_rect(slide, 0, 0, SLIDE_W, Inches(0.28), RED)
     _heading(slide, f"Buyer Profile — {bp.get('buyer','')}", top=Inches(0.28))
 
@@ -229,6 +257,7 @@ def _slide_buyer(prs: Presentation, bp: Dict) -> None:
 
 def _slide_rankings(prs: Presentation, ts: Dict) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fix_spTree(slide)
     _add_rect(slide, 0, 0, SLIDE_W, Inches(0.28), RED)
     _heading(slide, "Target Rankings — All Companies Screened", top=Inches(0.28))
 
@@ -298,6 +327,7 @@ def _slide_rankings(prs: Presentation, ts: Dict) -> None:
 def _slide_company(prs: Presentation, t: Dict, bp: Dict, rank: int,
                    detail: Optional[Dict] = None) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fix_spTree(slide)
     _add_rect(slide, 0, 0, SLIDE_W, Inches(0.28), RED)
     name = t.get("name", "")
     _heading(slide, f"#{rank} — {name}  ·  Acquisition Report", top=Inches(0.28))
@@ -417,6 +447,7 @@ def _slide_company(prs: Presentation, t: Dict, bp: Dict, rank: int,
 
 def _slide_dcf(prs: Presentation, dcf: Dict) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _fix_spTree(slide)
     _add_rect(slide, 0, 0, SLIDE_W, Inches(0.28), RED)
     _heading(slide, f"DCF Valuation — {dcf.get('target_name','Top Target')}", top=Inches(0.28))
 
@@ -465,7 +496,8 @@ def _slide_dcf(prs: Presentation, dcf: Dict) -> None:
 
 def _slide_recommendation(prs: Presentation, ts: Dict, bp: Dict) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _solid(slide.background, NAVY)
+    _fix_spTree(slide)
+    _add_rect(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)   # navy background rectangle
     _add_rect(slide, 0, 0, Inches(0.18), SLIDE_H, RED)
 
     _add_textbox(slide, "Recommendation & Next Steps",
