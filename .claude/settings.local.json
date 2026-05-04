@@ -2,7 +2,23 @@
   "permissions": {
     "allow": [
       "Bash(python3 -m venv .venv)",
-      "Bash(.venv/bin/pip install:*)"
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(python3 -c ':*)",
+      "Read(//var/folders/xd/cd95wxvn0ng_jh1ks0wjktl40000gn/T/TemporaryItems/NSIRD_screencaptureui_vb0hDQ/**)",
+      "Read(//var/folders/xd/cd95wxvn0ng_jh1ks0wjktl40000gn/T/TemporaryItems/NSIRD_screencaptureui_BQXJcu/**)",
+      "Bash(ls \"/Users/sohail/Documents/Claude VS/strategic_fit_engine/\"*.xlsx)",
+      "Bash(ls \"/Users/sohail/Documents/Claude VS/Financials/\"*.xlsx)",
+      "Bash(.venv/bin/python -c ':*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(.venv/bin/python -c \"from strategic_fit_engine import step2_discovery, step3_scoring; print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -c \"from strategic_fit_engine import step1_buyer_dna, step2_discovery, step3_scoring; print\\('OK'\\)\")",
+      "Bash(.venv/bin/python -c \"import openpyxl; print\\('ok'\\)\")",
+      "Bash(python strategic_fit_engine/patch_report.py)",
+      "Bash(.venv/bin/python3 -)",
+      "Bash(.venv/bin/python3 strategic_fit_engine/patch_v6.py \"/Users/sohail/Downloads/Duolingo v6.html\")"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }
