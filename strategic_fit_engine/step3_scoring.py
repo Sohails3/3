@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional
 import anthropic
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env", override=True)
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 DATA_DIR = Path(__file__).parent / "data"
 MODEL = "claude-sonnet-4-6"

@@ -23,7 +23,7 @@ try:
 except ImportError:
     import companies_house as ch_api          # standalone run
 
-load_dotenv(Path(__file__).parent.parent / ".env", override=True)
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 DATA_DIR   = Path(__file__).parent / "data"
 OUTPUT_DIR = Path(__file__).parent / "output"

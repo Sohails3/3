@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env", override=True)
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 BASE_URL  = "https://api.company-information.service.gov.uk"
 DOC_BASE  = "https://document-api.company-information.service.gov.uk"

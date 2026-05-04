@@ -31,7 +31,7 @@ if _ROOT not in sys.path:
 from dotenv import load_dotenv
 from flask import Flask, Response, request, send_file
 
-load_dotenv(Path(__file__).parent.parent / ".env", override=True)
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 app = Flask(__name__)
 
