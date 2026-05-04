@@ -87,9 +87,11 @@ def _notify(title: str, message: str) -> None:
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
-            print(f"  [ntfy] Notification sent — HTTP {resp.status}")
+            sys.__stdout__.write(f"[ntfy] Notification sent — HTTP {resp.status}\n")
+            sys.__stdout__.flush()
     except Exception as ex:
-        print(f"  [ntfy] Notification failed: {ex}")
+        sys.__stdout__.write(f"[ntfy] Notification failed: {ex}\n")
+        sys.__stdout__.flush()
 
 
 def _add(session_id: str, msg_type: str, text: str, step: int = None) -> None:
