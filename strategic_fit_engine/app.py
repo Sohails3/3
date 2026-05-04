@@ -79,12 +79,17 @@ def _notify(title: str, message: str) -> None:
         req = urllib.request.Request(
             f"https://ntfy.sh/{topic}",
             data=message.encode("utf-8"),
-            headers={"Title": title, "Priority": "default"},
+            headers={
+                "Title": title,
+                "Priority": "default",
+                "Content-Type": "text/plain",
+            },
             method="POST",
         )
-        urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass  # Never let a notification failure break the pipeline
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            print(f"  [ntfy] Notification sent — HTTP {resp.status}")
+    except Exception as ex:
+        print(f"  [ntfy] Notification failed: {ex}")
 
 
 def _add(session_id: str, msg_type: str, text: str, step: int = None) -> None:
@@ -1109,7 +1114,7 @@ def _progress_html(company: str, sector: str, geography: str, mode: str = "buy")
   <div class="right-panel">
     <div class="page-label">Live Analysis</div>
     <h2><span class="spinner pulsing"></span>Running Pipeline</h2>
-    <div class="running-sub">This typically takes 5–10 minutes. Do not close this tab.</div>
+    <div class="running-sub">This typically takes <strong>5-10 minutes</strong>. Do not close this tab.</div>
 
     <div class="progress-wrap">
       <div class="progress-meta">
