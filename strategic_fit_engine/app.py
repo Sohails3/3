@@ -1109,7 +1109,7 @@ def _progress_html(company: str, sector: str, geography: str, mode: str = "buy")
   <div class="right-panel">
     <div class="page-label">Live Analysis</div>
     <h2><span class="spinner pulsing"></span>Running Pipeline</h2>
-    <div class="running-sub">This typically takes 3–5 minutes. Do not close this tab.</div>
+    <div class="running-sub">This typically takes 5–10 minutes. Do not close this tab.</div>
 
     <div class="progress-wrap">
       <div class="progress-meta">
