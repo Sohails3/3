@@ -71,6 +71,22 @@ class _Capture:
         pass
 
 
+def _notify(title: str, message: str) -> None:
+    """Fire-and-forget push notification via ntfy.sh."""
+    try:
+        import urllib.request
+        topic = "strategicfitengine-ss-gpb"
+        req = urllib.request.Request(
+            f"https://ntfy.sh/{topic}",
+            data=message.encode("utf-8"),
+            headers={"Title": title, "Priority": "default"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass  # Never let a notification failure break the pipeline
+
+
 def _add(session_id: str, msg_type: str, text: str, step: int = None) -> None:
     with _jobs_lock:
         job = _jobs.get(session_id)
@@ -170,6 +186,10 @@ def _run_pipeline(company: str, sector: str, geography: str,
             if session_id in _jobs:
                 _jobs[session_id]["done"] = True
         _add(session_id, "complete", "Analysis complete! Your report is ready.")
+        _notify(
+            f"✅ Report complete — {company}",
+            f"Mode: {mode}-side\nCompany: {company}\nSector: {sector}\nGeography: {geography}"
+        )
 
     except Exception as e:
         tb = traceback.format_exc()
@@ -178,6 +198,10 @@ def _run_pipeline(company: str, sector: str, geography: str,
         with _jobs_lock:
             if session_id in _jobs:
                 _jobs[session_id]["error"] = str(e)
+        _notify(
+            f"❌ Report failed — {company}",
+            f"Mode: {mode}-side\nCompany: {company}\nSector: {sector}\nGeography: {geography}\nError: {e}"
+        )
     finally:
         sys.stdout = old_stdout
         with _jobs_lock:
