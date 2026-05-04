@@ -88,7 +88,9 @@ def _run_pipeline(company: str, sector: str, geography: str, mode: str = "buy") 
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, _, v = line.partition("=")
-                os.environ[k.strip()] = v.strip()
+                # Only set if not already in environment (Railway sets it directly)
+                if k.strip() not in os.environ:
+                    os.environ[k.strip()] = v.strip()
 
     is_sell = (mode == "sell")
     old_stdout = sys.stdout
