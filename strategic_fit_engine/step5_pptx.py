@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -44,6 +45,14 @@ SLIDE_H = Inches(7.5)
 
 
 # ── Low-level helpers ──────────────────────────────────────────────────────────
+
+# XML 1.0 forbids control characters other than tab (0x09), LF (0x0A), CR (0x0D)
+_XML_INVALID = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]')
+
+def _safe(text) -> str:
+    """Strip XML-invalid characters so PowerPoint never shows a repair warning."""
+    return _XML_INVALID.sub('', str(text) if not isinstance(text, str) else text)
+
 
 def _rgb(r: int, g: int, b: int) -> RGBColor:
     return RGBColor(r, g, b)
@@ -77,7 +86,7 @@ def _add_textbox(slide, text: str, l, t, w, h,
     p   = tf.paragraphs[0]
     p.alignment = align
     run = p.add_run()
-    run.text = text
+    run.text = _safe(text)
     run.font.bold  = bold
     run.font.size  = Pt(size)
     run.font.color.rgb = color or NAVY
