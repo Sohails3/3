@@ -188,7 +188,16 @@ def run_analysis():
     global _job
     with _lock:
         if _job["running"]:
-            return "An analysis is already running. Please wait.", 409
+            return (
+                "<html><body style='font-family:sans-serif;padding:40px'>"
+                "<h2>Analysis already running</h2>"
+                "<p>An analysis is currently in progress. Wait a few minutes and "
+                "<a href='/'>go back</a> to check, or force-reset below.</p>"
+                "<form method='post' action='/reset'>"
+                "<button type='submit' style='background:#CC0605;color:#fff;border:none;"
+                "padding:10px 20px;font-size:14px;cursor:pointer'>Force Reset</button>"
+                "</form></body></html>"
+            ), 409
         company   = request.form.get("company", "").strip() or request.form.get("buyer", "").strip()
         sector    = request.form.get("sector", "").strip()
         geography = request.form.get("geography", "").strip()
@@ -236,6 +245,14 @@ def view_report():
     if path.exists():
         return send_file(str(path.resolve()))
     return "Report not yet generated. Run an analysis first.", 404
+
+
+@app.route("/reset", methods=["POST"])
+def reset_job():
+    global _job
+    with _lock:
+        _job = {"running": False, "messages": [], "current_step": 0, "done": False, "error": None}
+    return "", 204
 
 
 @app.route("/download/pptx")
