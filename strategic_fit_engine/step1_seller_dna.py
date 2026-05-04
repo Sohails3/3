@@ -281,7 +281,7 @@ def run(seller: str, sector: str) -> Dict:
     print(f"  Researching {seller} (sell-side) via web search...")
 
     raw = _with_retry(
-        lambda: _run_with_web_search(client, prompt, max_tokens=6000, max_iterations=3)
+        lambda: _run_with_web_search(client, prompt, max_tokens=8000, max_iterations=3)
     )
 
     try:
