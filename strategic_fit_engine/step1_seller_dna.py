@@ -89,13 +89,28 @@ def _extract_json(raw: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
+    # Find outermost { ... } even if model added preamble text before the JSON
     start = text.find("{")
     end   = text.rfind("}")
     if start != -1 and end != -1 and end > start:
         try:
             return json.loads(text[start:end + 1])
         except json.JSONDecodeError:
-            pass
+            # Walk character by character to find a balanced JSON object
+            depth = 0
+            json_start = None
+            for i, ch in enumerate(text):
+                if ch == "{":
+                    if depth == 0:
+                        json_start = i
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0 and json_start is not None:
+                        try:
+                            return json.loads(text[json_start:i + 1])
+                        except json.JSONDecodeError:
+                            json_start = None
     raise ValueError(f"JSON parse failed.\nRaw (first 800 chars):\n{raw[:800]}")
 
 
