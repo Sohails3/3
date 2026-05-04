@@ -495,10 +495,12 @@ def _slide_recommendation(prs: Presentation, ts: Dict, bp: Dict) -> None:
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def build_pptx(bp: Dict, ts: Dict, dcf: Optional[Dict] = None,
-               company_details: Optional[Dict] = None) -> str:
+               company_details: Optional[Dict] = None,
+               output_dir: Optional[Path] = None) -> str:
     """Generate the deck and return the output path as a string."""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / "report.pptx"
+    _out_dir = Path(output_dir) if output_dir is not None else OUTPUT_DIR
+    _out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = _out_dir / "report.pptx"
 
     prs = Presentation()
     prs.slide_width  = SLIDE_W

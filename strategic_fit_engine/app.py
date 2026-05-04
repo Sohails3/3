@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import sys
 import threading
 import time
 import traceback
+import uuid
 from pathlib import Path
 
 import sys
@@ -29,11 +31,12 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from dotenv import load_dotenv
-from flask import Flask, Response, request, send_file
+from flask import Flask, Response, request, send_file, session, redirect, url_for
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 
 
 def _h(v: str) -> str:
@@ -47,40 +50,43 @@ BASE = Path(__file__).parent
 
 # GP Bullhound bull logo (inline SVG, white version for dark backgrounds)
 # ---------------------------------------------------------------------------
-# Job state (single-user — one analysis at a time)
+# Multi-user job state — keyed by browser session ID
 # ---------------------------------------------------------------------------
 
-_job: dict = {
-    "running": False,
-    "messages": [],
-    "current_step": 0,
-    "done": False,
-    "error": None,
-}
-_lock = threading.Lock()
+_jobs: dict = {}          # session_id → job dict
+_jobs_lock = threading.Lock()
+
+# Password gate — set ACCESS_PASSWORD env var to require a password
+ACCESS_PASSWORD: str = os.environ.get("ACCESS_PASSWORD", "")
 
 
 class _Capture:
     """Redirects print() calls from step modules into the job message list."""
+    def __init__(self, session_id: str) -> None:
+        self._sid = session_id
     def write(self, text: str) -> None:
         if text.strip():
-            _add("log", text.strip())
+            _add(self._sid, "log", text.strip())
     def flush(self) -> None:
         pass
 
 
-def _add(msg_type: str, text: str, step: int = None) -> None:
-    with _lock:
+def _add(session_id: str, msg_type: str, text: str, step: int = None) -> None:
+    with _jobs_lock:
+        job = _jobs.get(session_id)
+        if job is None:
+            return
         if step is not None:
-            _job["current_step"] = step
-        _job["messages"].append({
+            job["current_step"] = step
+        job["messages"].append({
             "type": msg_type,
             "text": text,
-            "step": _job["current_step"],
+            "step": job["current_step"],
         })
 
 
-def _run_pipeline(company: str, sector: str, geography: str, mode: str = "buy") -> None:
+def _run_pipeline(company: str, sector: str, geography: str,
+                  mode: str, session_id: str) -> None:
     """Runs all 4 steps sequentially in a background thread."""
     _env_path = Path(__file__).parent.parent / ".env"
     if _env_path.exists():
@@ -88,90 +94,95 @@ def _run_pipeline(company: str, sector: str, geography: str, mode: str = "buy") 
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, _, v = line.partition("=")
-                # Only set if not already in environment (Railway sets it directly)
                 if k.strip() not in os.environ:
                     os.environ[k.strip()] = v.strip()
 
     is_sell = (mode == "sell")
+    output_dir = BASE / "output" / session_id
+    scored_path = BASE / "data" / f"{session_id}_scored.json"
+
     old_stdout = sys.stdout
-    sys.stdout = _Capture()
+    sys.stdout = _Capture(session_id)
     try:
-        _add("info", f"Pipeline starting ({mode}-side): {company} · {sector} · {geography}")
+        _add(session_id, "info", f"Pipeline starting ({mode}-side): {company} · {sector} · {geography}")
 
         (BASE / "data").mkdir(exist_ok=True)
-        (BASE / "output").mkdir(exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         # ── Step 1 ──────────────────────────────────────────────────────
         if is_sell:
-            _add("step", "Step 1 / 4 — Seller Profile & Acquirer Criteria", step=1)
+            _add(session_id, "step", "Step 1 / 4 — Seller Profile & Acquirer Criteria", step=1)
             from strategic_fit_engine import step1_seller_dna
             bp = step1_seller_dna.run(company, sector)
             n_crit = len(bp.get("scoring_criteria", []))
-            _add("done", f"✓ Step 1 complete — {company} seller profile built, {n_crit} acquirer criteria derived")
+            _add(session_id, "done", f"✓ Step 1 complete — {company} seller profile built, {n_crit} acquirer criteria derived")
         else:
-            _add("step", "Step 1 / 4 — Buyer Strategy, Dry Powder & Market Intelligence", step=1)
+            _add(session_id, "step", "Step 1 / 4 — Buyer Strategy, Dry Powder & Market Intelligence", step=1)
             from strategic_fit_engine import step1_buyer_dna
             bp = step1_buyer_dna.run(company, sector)
             n_bacq = len(bp.get("buyer_acquisitions", []))
             n_crit = len(bp.get("scoring_criteria", []))
-            _add("done", f"✓ Step 1 complete — {company} M&A thesis built, {n_bacq} prior acquisitions mapped, {n_crit} scoring criteria derived")
+            _add(session_id, "done", f"✓ Step 1 complete — {company} M&A thesis built, {n_bacq} prior acquisitions mapped, {n_crit} scoring criteria derived")
         if bp.get("target_brief"):
-            _add("log", f"   Brief: {bp['target_brief'][:120]}…")
+            _add(session_id, "log", f"   Brief: {bp['target_brief'][:120]}…")
 
         # ── Step 2 ──────────────────────────────────────────────────────
         if is_sell:
-            _add("step", "Step 2 / 4 — Potential Acquirer Longlist", step=2)
+            _add(session_id, "step", "Step 2 / 4 — Potential Acquirer Longlist", step=2)
             from strategic_fit_engine import step2_acquirer_discovery
             tr = step2_acquirer_discovery.run(sector, geography, buyer_profile=bp)
             n_tgt = len(tr.get("targets", []))
-            _add("done", f"✓ Step 2 complete — {n_tgt} potential acquirers identified")
+            _add(session_id, "done", f"✓ Step 2 complete — {n_tgt} potential acquirers identified")
         else:
-            _add("step", "Step 2 / 4 — Buyer-Led Target Longlist", step=2)
+            _add(session_id, "step", "Step 2 / 4 — Buyer-Led Target Longlist", step=2)
             from strategic_fit_engine import step2_discovery
             tr = step2_discovery.run(sector, geography, buyer_profile=bp)
             n_tgt = len(tr.get("targets", []))
-            _add("done", f"✓ Step 2 complete — {n_tgt} companies on longlist")
+            _add(session_id, "done", f"✓ Step 2 complete — {n_tgt} companies on longlist")
         for t in tr.get("targets", [])[:5]:
-            _add("log", f"   · {t['name']} ({t.get('country','')}) — {t.get('funding_stage','')}")
+            _add(session_id, "log", f"   · {t['name']} ({t.get('country','')}) — {t.get('funding_stage','')}")
         if n_tgt > 5:
-            _add("log", f"   · ... and {n_tgt - 5} more")
+            _add(session_id, "log", f"   · ... and {n_tgt - 5} more")
 
         # ── Step 3 ──────────────────────────────────────────────────────
         step3_label = "Acquirer Fit Scoring (8 criteria)" if is_sell else "Strategic Fit Scoring (8 criteria, 2 batches)"
-        _add("step", f"Step 3 / 4 — {step3_label}", step=3)
+        _add(session_id, "step", f"Step 3 / 4 — {step3_label}", step=3)
         from strategic_fit_engine import step3_scoring
         scored = step3_scoring.run(bp, tr)
         scored["sector"] = sector
         scored["geography"] = geography
         scored["mode"] = mode
-        with open(BASE / "data" / "targets_scored.json", "w", encoding="utf-8") as f:
+        with open(scored_path, "w", encoding="utf-8") as f:
             json.dump(scored, f, indent=2, ensure_ascii=False)
         top = scored["targets"][0] if scored.get("targets") else {}
         top_label = "Top acquirer" if is_sell else "Top target"
-        _add("done", f"✓ Step 3 complete — {top_label}: {top.get('name','?')} ({top.get('total_score','?')}/{top.get('max_score','?')})")
+        _add(session_id, "done", f"✓ Step 3 complete — {top_label}: {top.get('name','?')} ({top.get('total_score','?')}/{top.get('max_score','?')})")
         for t in scored.get("targets", [])[:3]:
-            _add("log", f"   #{t['rank']}: {t['name']} — {t['total_score']}/{t['max_score']}")
+            _add(session_id, "log", f"   #{t['rank']}: {t['name']} — {t['total_score']}/{t['max_score']}")
 
         # ── Step 4 ──────────────────────────────────────────────────────
-        _add("step", "Step 4 / 4 — Generating Interactive Dashboard", step=4)
+        _add(session_id, "step", "Step 4 / 4 — Generating Interactive Dashboard", step=4)
         from strategic_fit_engine import step4_output
-        step4_output.run(bp, scored)
-        _add("done", "✓ Step 4 complete — Dashboard saved to output/report.html")
+        step4_output.run(bp, scored, output_dir=output_dir)
+        _add(session_id, "done", "✓ Step 4 complete — Dashboard saved")
 
-        with _lock:
-            _job["done"] = True
-        _add("complete", "Analysis complete! Your report is ready.")
+        with _jobs_lock:
+            if session_id in _jobs:
+                _jobs[session_id]["done"] = True
+        _add(session_id, "complete", "Analysis complete! Your report is ready.")
 
     except Exception as e:
         tb = traceback.format_exc()
-        _add("error", f"Error: {e}")
-        _add("error", tb)
-        with _lock:
-            _job["error"] = str(e)
+        _add(session_id, "error", f"Error: {e}")
+        _add(session_id, "error", tb)
+        with _jobs_lock:
+            if session_id in _jobs:
+                _jobs[session_id]["error"] = str(e)
     finally:
         sys.stdout = old_stdout
-        with _lock:
-            _job["running"] = False
+        with _jobs_lock:
+            if session_id in _jobs:
+                _jobs[session_id]["running"] = False
 
 
 # ---------------------------------------------------------------------------
@@ -185,9 +196,24 @@ def index():
 
 @app.route("/run", methods=["POST"])
 def run_analysis():
-    global _job
-    with _lock:
-        if _job["running"]:
+    # Assign a persistent session ID for this browser
+    sid = session.get("sid")
+    if not sid:
+        sid = str(uuid.uuid4())
+        session["sid"] = sid
+
+    company   = request.form.get("company", "").strip() or request.form.get("buyer", "").strip()
+    sector    = request.form.get("sector", "").strip()
+    geography = request.form.get("geography", "").strip()
+    mode      = request.form.get("mode", "buy").strip()
+    if mode not in ("buy", "sell"):
+        mode = "buy"
+    if not company or not sector or not geography:
+        return "Missing required fields: company, sector, geography", 400
+
+    with _jobs_lock:
+        job = _jobs.get(sid)
+        if job and job["running"]:
             return (
                 "<html><body style='font-family:sans-serif;padding:40px'>"
                 "<h2>Analysis already running</h2>"
@@ -198,30 +224,29 @@ def run_analysis():
                 "padding:10px 20px;font-size:14px;cursor:pointer'>Force Reset</button>"
                 "</form></body></html>"
             ), 409
-        company   = request.form.get("company", "").strip() or request.form.get("buyer", "").strip()
-        sector    = request.form.get("sector", "").strip()
-        geography = request.form.get("geography", "").strip()
-        mode      = request.form.get("mode", "buy").strip()
-        if mode not in ("buy", "sell"):
-            mode = "buy"
-        if not company or not sector or not geography:
-            return "Missing required fields: company, sector, geography", 400
-        _job = {"running": True, "messages": [], "current_step": 0, "done": False, "error": None}
+        _jobs[sid] = {"running": True, "messages": [], "current_step": 0, "done": False, "error": None}
 
-    t = threading.Thread(target=_run_pipeline, args=(company, sector, geography, mode), daemon=True)
+    t = threading.Thread(target=_run_pipeline,
+                         args=(company, sector, geography, mode, sid), daemon=True)
     t.start()
     return _progress_html(company, sector, geography, mode)
 
 
 @app.route("/stream")
 def stream():
+    sid = session.get("sid")
+
     def generate():
+        if not sid or sid not in _jobs:
+            yield f"data: {json.dumps({'type': 'end', 'error': None})}\n\n"
+            return
         last = 0
         while True:
-            with _lock:
-                msgs  = list(_job["messages"])
-                done  = _job["done"]
-                error = _job.get("error")
+            with _jobs_lock:
+                job   = _jobs.get(sid, {})
+                msgs  = list(job.get("messages", []))
+                done  = job.get("done", False)
+                error = job.get("error")
 
             for msg in msgs[last:]:
                 yield f"data: {json.dumps(msg)}\n\n"
@@ -241,6 +266,12 @@ def stream():
 
 @app.route("/report")
 def view_report():
+    sid = session.get("sid")
+    if sid:
+        path = BASE / "output" / sid / "report.html"
+        if path.exists():
+            return send_file(str(path.resolve()))
+    # Legacy fallback (single-user path)
     path = BASE / "output" / "report.html"
     if path.exists():
         return send_file(str(path.resolve()))
@@ -249,15 +280,19 @@ def view_report():
 
 @app.route("/reset", methods=["POST"])
 def reset_job():
-    global _job
-    with _lock:
-        _job = {"running": False, "messages": [], "current_step": 0, "done": False, "error": None}
+    sid = session.get("sid")
+    if sid:
+        with _jobs_lock:
+            _jobs[sid] = {"running": False, "messages": [], "current_step": 0, "done": False, "error": None}
     return "", 204
 
 
 @app.route("/download/pptx")
 def download_pptx():
-    path = BASE / "output" / "report.pptx"
+    sid = session.get("sid")
+    path = (BASE / "output" / sid / "report.pptx") if sid else None
+    if path is None or not path.exists():
+        path = BASE / "output" / "report.pptx"
     if path.exists():
         return send_file(str(path.resolve()),
                          as_attachment=True,
@@ -273,7 +308,10 @@ def download_excel():
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils import get_column_letter
 
-    scored_path = BASE / "data" / "targets_scored.json"
+    sid = session.get("sid")
+    scored_path = (BASE / "data" / f"{sid}_scored.json") if sid else None
+    if scored_path is None or not scored_path.exists():
+        scored_path = BASE / "data" / "targets_scored.json"
     if not scored_path.exists():
         return "No screening data found. Run an analysis first.", 404
 
@@ -417,6 +455,90 @@ def view_workflow():
     if path.exists():
         return send_file(str(path.resolve()))
     return "Workflow diagrams not found.", 404
+
+
+# ---------------------------------------------------------------------------
+# Password gate
+# ---------------------------------------------------------------------------
+
+@app.before_request
+def require_auth():
+    """Redirect to login if ACCESS_PASSWORD is set and user is not authenticated."""
+    if not ACCESS_PASSWORD:
+        return  # No password configured — open access
+    if request.endpoint in ("login", "auth"):
+        return  # These routes handle auth themselves
+    if not session.get("auth"):
+        return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET"])
+def login():
+    return LOGIN_HTML
+
+
+@app.route("/auth", methods=["POST"])
+def auth():
+    password = request.form.get("password", "")
+    if password == ACCESS_PASSWORD:
+        session["auth"] = True
+        return redirect(url_for("index"))
+    return LOGIN_HTML.replace(
+        'id="pw-error" style="display:none"',
+        'id="pw-error"'
+    ), 401
+
+
+LOGIN_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Strategic Fit Engine — Access</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;
+      background:#252850;min-height:100vh;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;color:#fff}
+    .card{width:100%;max-width:420px;background:#fff;padding:48px 48px 40px;color:#252850}
+    .logo{font-size:13px;font-weight:700;letter-spacing:.04em;color:#888;
+      text-transform:uppercase;margin-bottom:32px}
+    .logo span{color:#CC0605}
+    h1{font-size:26px;font-weight:700;color:#252850;margin-bottom:8px;line-height:1.2}
+    .sub{font-size:13px;color:#888;margin-bottom:32px;line-height:1.6}
+    label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+      color:#252850;display:block;margin-bottom:8px}
+    input[type=password]{width:100%;border:1px solid #d0d5e8;padding:13px 14px;
+      font-size:14px;color:#252850;font-family:inherit;outline:none;
+      transition:border .15s;background:#fff;margin-bottom:20px}
+    input[type=password]:focus{border-color:#252850}
+    button{width:100%;background:#CC0605;color:#fff;border:none;padding:14px;
+      font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;
+      letter-spacing:.04em;text-transform:uppercase;transition:background .15s}
+    button:hover{background:#a80504}
+    #pw-error{color:#CC0605;font-size:12px;margin-top:14px;
+      font-weight:600;display:none}
+    .footer{margin-top:32px;font-size:11px;color:rgba(255,255,255,.3);text-align:center}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Strategic Fit Engine <span>·</span> M&amp;A Intelligence</div>
+    <h1>Restricted Access</h1>
+    <p class="sub">This tool is for authorised use only.<br>Enter the access password to continue.</p>
+    <form method="POST" action="/auth">
+      <label for="password">Access Password</label>
+      <input type="password" id="password" name="password"
+             placeholder="Enter password" autofocus required>
+      <button type="submit">Continue →</button>
+      <div id="pw-error" style="display:none">Incorrect password. Please try again.</div>
+    </form>
+  </div>
+  <div class="footer">Not for distribution &nbsp;·&nbsp; Powered by GP Bullhound</div>
+</body>
+</html>"""
 
 
 # ---------------------------------------------------------------------------

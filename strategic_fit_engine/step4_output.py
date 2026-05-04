@@ -2571,7 +2571,8 @@ def save(html: str, path: Optional[Path] = None) -> str:
     return str(path)
 
 
-def run(bp: Optional[Dict]=None, ts: Optional[Dict]=None) -> str:
+def run(bp: Optional[Dict]=None, ts: Optional[Dict]=None,
+        output_dir: Optional[Path]=None) -> str:
     if bp is None:
         with open(DATA_DIR/"buyer_profile.json",encoding="utf-8") as f: bp=json.load(f)
     if ts is None:
@@ -2579,13 +2580,14 @@ def run(bp: Optional[Dict]=None, ts: Optional[Dict]=None) -> str:
 
     print("  Building report...")
     html = build_html(bp, ts)
-    save(html)
+    report_path = (Path(output_dir) / "report.html") if output_dir is not None else None
+    save(html, report_path)
 
     print("  Building PowerPoint deck...")
     from strategic_fit_engine import step5_pptx
-    step5_pptx.build_pptx(bp, ts)
+    step5_pptx.build_pptx(bp, ts, output_dir=output_dir)
 
-    return str(OUTPUT_DIR / "report.html")
+    return str(report_path if report_path is not None else OUTPUT_DIR / "report.html")
 
 
 if __name__ == "__main__":
