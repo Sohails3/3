@@ -48,16 +48,12 @@ def _h(v: str) -> str:
             .replace('"', "&quot;"))
 BASE = Path(__file__).parent
 
-# GP Bullhound bull logo (inline SVG, white version for dark backgrounds)
 # ---------------------------------------------------------------------------
 # Multi-user job state — keyed by browser session ID
 # ---------------------------------------------------------------------------
 
 _jobs: dict = {}          # session_id → job dict
 _jobs_lock = threading.Lock()
-
-# Password gate — set ACCESS_PASSWORD env var to require a password
-ACCESS_PASSWORD: str = os.environ.get("ACCESS_PASSWORD", "")
 
 
 class _Capture:
@@ -109,7 +105,8 @@ def _add(session_id: str, msg_type: str, text: str, step: int = None) -> None:
 
 
 def _run_pipeline(company: str, sector: str, geography: str,
-                  mode: str, session_id: str) -> None:
+                  mode: str, session_id: str, size_range: str = "Any size",
+                  sale_type: str = "Full Sale (100%)") -> None:
     """Runs all 4 steps sequentially in a background thread."""
     _env_path = Path(__file__).parent.parent / ".env"
     if _env_path.exists():
@@ -136,13 +133,13 @@ def _run_pipeline(company: str, sector: str, geography: str,
         if is_sell:
             _add(session_id, "step", "Step 1 / 4 — Seller Profile & Acquirer Criteria", step=1)
             from strategic_fit_engine import step1_seller_dna
-            bp = step1_seller_dna.run(company, sector)
+            bp = step1_seller_dna.run(company, sector, size_range=size_range, sale_type=sale_type)
             n_crit = len(bp.get("scoring_criteria", []))
             _add(session_id, "done", f"✓ Step 1 complete — {company} seller profile built, {n_crit} acquirer criteria derived")
         else:
             _add(session_id, "step", "Step 1 / 4 — Buyer Strategy, Dry Powder & Market Intelligence", step=1)
             from strategic_fit_engine import step1_buyer_dna
-            bp = step1_buyer_dna.run(company, sector)
+            bp = step1_buyer_dna.run(company, sector, size_range=size_range)
             n_bacq = len(bp.get("buyer_acquisitions", []))
             n_crit = len(bp.get("scoring_criteria", []))
             _add(session_id, "done", f"✓ Step 1 complete — {company} M&A thesis built, {n_bacq} prior acquisitions mapped, {n_crit} scoring criteria derived")
@@ -153,13 +150,13 @@ def _run_pipeline(company: str, sector: str, geography: str,
         if is_sell:
             _add(session_id, "step", "Step 2 / 4 — Potential Acquirer Longlist", step=2)
             from strategic_fit_engine import step2_acquirer_discovery
-            tr = step2_acquirer_discovery.run(sector, geography, buyer_profile=bp)
+            tr = step2_acquirer_discovery.run(sector, geography, buyer_profile=bp, size_range=size_range, sale_type=sale_type)
             n_tgt = len(tr.get("targets", []))
             _add(session_id, "done", f"✓ Step 2 complete — {n_tgt} potential acquirers identified")
         else:
             _add(session_id, "step", "Step 2 / 4 — Buyer-Led Target Longlist", step=2)
             from strategic_fit_engine import step2_discovery
-            tr = step2_discovery.run(sector, geography, buyer_profile=bp)
+            tr = step2_discovery.run(sector, geography, buyer_profile=bp, size_range=size_range)
             n_tgt = len(tr.get("targets", []))
             _add(session_id, "done", f"✓ Step 2 complete — {n_tgt} companies on longlist")
         for t in tr.get("targets", [])[:5]:
@@ -175,6 +172,8 @@ def _run_pipeline(company: str, sector: str, geography: str,
         scored["sector"] = sector
         scored["geography"] = geography
         scored["mode"] = mode
+        if is_sell:
+            scored["sale_type"] = sale_type
         with open(scored_path, "w", encoding="utf-8") as f:
             json.dump(scored, f, indent=2, ensure_ascii=False)
         top = scored["targets"][0] if scored.get("targets") else {}
@@ -233,10 +232,12 @@ def run_analysis():
         sid = str(uuid.uuid4())
         session["sid"] = sid
 
-    company   = request.form.get("company", "").strip() or request.form.get("buyer", "").strip()
-    sector    = request.form.get("sector", "").strip()
-    geography = request.form.get("geography", "").strip()
-    mode      = request.form.get("mode", "buy").strip()
+    company    = request.form.get("company", "").strip() or request.form.get("buyer", "").strip()
+    sector     = request.form.get("sector", "").strip()
+    geography  = request.form.get("geography", "").strip()
+    mode       = request.form.get("mode", "buy").strip()
+    size_range = request.form.get("size_range", "Any size").strip() or "Any size"
+    sale_type  = request.form.get("sale_type", "Full Sale (100%)").strip() or "Full Sale (100%)"
     if mode not in ("buy", "sell"):
         mode = "buy"
     if not company or not sector or not geography:
@@ -258,9 +259,9 @@ def run_analysis():
         _jobs[sid] = {"running": True, "messages": [], "current_step": 0, "done": False, "error": None}
 
     t = threading.Thread(target=_run_pipeline,
-                         args=(company, sector, geography, mode, sid), daemon=True)
+                         args=(company, sector, geography, mode, sid, size_range, sale_type), daemon=True)
     t.start()
-    return _progress_html(company, sector, geography, mode)
+    return _progress_html(company, sector, geography, mode, size_range, sale_type)
 
 
 @app.route("/stream")
@@ -476,7 +477,7 @@ def download_workflow_pptx():
     path = workflow_pptx.run()
     return send_file(str(path.resolve()),
                      as_attachment=True,
-                     download_name="GP_Bullhound_Workflow_Diagrams.pptx",
+                     download_name="Workflow_Diagrams.pptx",
                      mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation")
 
 
@@ -486,100 +487,6 @@ def view_workflow():
     if path.exists():
         return send_file(str(path.resolve()))
     return "Workflow diagrams not found.", 404
-
-
-# ---------------------------------------------------------------------------
-# Password gate
-# ---------------------------------------------------------------------------
-
-@app.before_request
-def require_auth():
-    """Redirect to login if ACCESS_PASSWORD is set and user is not authenticated."""
-    if not ACCESS_PASSWORD:
-        return  # No password configured — open access
-    if request.endpoint in ("login", "auth"):
-        return  # These routes handle auth themselves
-    if not session.get("auth"):
-        return redirect(url_for("login"))
-
-
-@app.route("/login", methods=["GET"])
-def login():
-    return LOGIN_HTML
-
-
-@app.route("/auth", methods=["POST"])
-def auth():
-    password = request.form.get("password", "")
-    if password == ACCESS_PASSWORD:
-        session["auth"] = True
-        return redirect(url_for("index"))
-    return LOGIN_HTML.replace(
-        'id="pw-error" style="display:none"',
-        'id="pw-error"'
-    ), 401
-
-
-LOGIN_HTML = """<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Strategic Fit Engine — Access</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;
-      background:#252850;min-height:100vh;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;color:#fff}
-    .card{width:100%;max-width:420px;background:#fff;padding:48px 48px 40px;color:#252850}
-    .logo{display:flex;align-items:center;gap:12px;margin-bottom:32px}
-    .logo-text{font-size:13px;font-weight:700;letter-spacing:.04em;color:#888;
-      text-transform:uppercase}
-    .logo-text span{color:#CC0605}
-    .logo-badge{background:#252850;padding:6px 12px;display:flex;align-items:center;gap:7px}
-    .logo-badge-label{font-size:11px;font-weight:700;color:#fff;letter-spacing:.02em;
-      font-family:'IBM Plex Sans',sans-serif}
-    h1{font-size:26px;font-weight:700;color:#252850;margin-bottom:8px;line-height:1.2}
-    .sub{font-size:13px;color:#888;margin-bottom:32px;line-height:1.6}
-    label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-      color:#252850;display:block;margin-bottom:8px}
-    input[type=password]{width:100%;border:1px solid #d0d5e8;padding:13px 14px;
-      font-size:14px;color:#252850;font-family:inherit;outline:none;
-      transition:border .15s;background:#fff;margin-bottom:20px}
-    input[type=password]:focus{border-color:#252850}
-    button{width:100%;background:#CC0605;color:#fff;border:none;padding:14px;
-      font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;
-      letter-spacing:.04em;text-transform:uppercase;transition:background .15s}
-    button:hover{background:#a80504}
-    #pw-error{color:#CC0605;font-size:12px;margin-top:14px;
-      font-weight:600;display:none}
-    .footer{margin-top:32px;font-size:11px;color:rgba(255,255,255,.3);text-align:center}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="logo">
-      <div class="logo-badge">
-        <svg xmlns="http://www.w3.org/2000/svg" width="83.729" height="65.861" viewBox="0 0 83.729 65.861" style="height:20px;width:auto"><path d="M145.038,197c.1.1.2.207.306.309a.355.355,0,0,0,.5.094c.078-.034.158-.064.231-.094a.7.7,0,0,1,.3.449,1.8,1.8,0,0,0,.137.358c.113.232.245.455.35.689a.8.8,0,0,0,.523.459c.426.134.848.283,1.273.422a4.67,4.67,0,0,1,1.585.844c.574.481,1.142.968,1.713,1.452.3.251.593.5.886.752a1.421,1.421,0,0,1,.54.855c.028.186.012.378.022.566.013.274.016.55.051.822a.971.971,0,0,0,.575.775,2.5,2.5,0,0,0,.28.132,17.342,17.342,0,0,0,2.68.835,3.631,3.631,0,0,1,.695.192,1.027,1.027,0,0,1,.67,1.3c-.038.15-.094.295-.139.443a3.085,3.085,0,0,0-.09,1.253c.026.222.067.442.108.662a1.654,1.654,0,0,1-.025.716,5.265,5.265,0,0,1-.812,1.91,3.657,3.657,0,0,1-1.262,1.123,13.617,13.617,0,0,1-1.348.581,3.1,3.1,0,0,1-.658.123.8.8,0,0,0-.548.306,1.792,1.792,0,0,1-1.5.677,4.88,4.88,0,0,1-2.954-.92,1.292,1.292,0,0,0-.953-.235,3.979,3.979,0,0,0-.851.2,7.019,7.019,0,0,0-3.112,2.349,3.159,3.159,0,0,0-.673,1.944c-.006.774.044,1.549.075,2.322a13.282,13.282,0,0,1-.078,2.5,5.247,5.247,0,0,1-.188.8,19.087,19.087,0,0,1-4.387,7.4c-.554.589-1.135,1.154-1.7,1.729-.164.165-.33.328-.494.492a6.688,6.688,0,0,0-1.014,1.3c-1.725,2.869-3.468,5.728-5.2,8.6a42.319,42.319,0,0,0-2.144,4.148c-.435.944-.844,1.9-1.21,2.876a7.841,7.841,0,0,0-.512,3.01c.017.568-.012,1.137.01,1.7a7.676,7.676,0,0,0,.132,1.308,2.628,2.628,0,0,0,1.277,1.71c.278.171.567.327.837.511a1.388,1.388,0,0,1,.62,1.028,1.674,1.674,0,0,1-1.025,1.71,2.842,2.842,0,0,1-.879.18c-.947.018-1.894.005-2.841-.009a1.229,1.229,0,0,1-.823-.386,2.3,2.3,0,0,1-.556-.89,6.318,6.318,0,0,1-.35-2.1c-.011-.525.022-1.051-.005-1.575-.069-1.307-.157-2.612-.245-3.918-.047-.7-.106-1.39-.171-2.084a2.1,2.1,0,0,0-.126-.6,1.781,1.781,0,0,1,.241-1.78,9.679,9.679,0,0,0,1.594-3.688,8.327,8.327,0,0,0,.025-2.644c-.095-.673-.206-1.345-.263-2.021a10.35,10.35,0,0,1,0-1.471c.04-.678.117-1.355.176-2.032.007-.076,0-.152,0-.247-.162-.019-.322-.043-.482-.056a28.429,28.429,0,0,1-4.219-.712,57.123,57.123,0,0,1-5.665-1.75,21.981,21.981,0,0,0-2.692-.7,25.049,25.049,0,0,0-3.4-.47c-.9-.066-1.8-.133-2.706-.156a15.573,15.573,0,0,0-3.086.216,3.48,3.48,0,0,0-1.049.346,1.673,1.673,0,0,0-.831,1c-.315.964-.613,1.937-.987,2.878a13.815,13.815,0,0,1-3.263,4.908,31.925,31.925,0,0,1-6.736,5.008,10.825,10.825,0,0,1-1.026.484q-1.3.547-2.6,1.072a2.921,2.921,0,0,0-1.085.726,9.845,9.845,0,0,0-.826.991c-.5.718-.994,1.447-1.463,2.189-.45.713-.889,1.435-1.291,2.176-.422.778-.8,1.582-1.188,2.376a2.879,2.879,0,0,0-.149.412,1.709,1.709,0,0,0,.283,1.611c.206.276.435.534.643.809a1.5,1.5,0,0,1,.151,1.518.6.6,0,0,1-.374.372,3.43,3.43,0,0,1-.769.2c-1.081.081-2.165.138-3.248.2a2.546,2.546,0,0,1-.54-.038,1.046,1.046,0,0,1-.827-.628,1.965,1.965,0,0,1-.114-1.553q.158-.423.342-.835c.458-1.029.934-2.051,1.38-3.086q.878-2.041,1.918-4a13.764,13.764,0,0,0,1.27-3.451c.106-.469.265-.925.395-1.389a1.863,1.863,0,0,1,.8-1.041,8.944,8.944,0,0,0,.935-.728,4.048,4.048,0,0,0,1.194-1.895c.8-2.74,1.75-5.434,2.665-8.139.4-1.188.718-2.406,1.072-3.61a.235.235,0,0,0,0-.073c-.26.176-.508.362-.772.521a9.348,9.348,0,0,1-2.234.926,13.335,13.335,0,0,1-4.288.511,8.826,8.826,0,0,1-3.243-.777,3.714,3.714,0,0,1-.976-.623,2.49,2.49,0,0,1-.562-.708,1.759,1.759,0,0,1,.2-.054,7.485,7.485,0,0,1,1.8.029,15.821,15.821,0,0,0,2.239.134,8.979,8.979,0,0,0,7.616-4.409c.495-.8.938-1.625,1.39-2.446a15.758,15.758,0,0,1,3.708-4.5,5.175,5.175,0,0,1,.729-.531,19.466,19.466,0,0,1,5.258-2.153,17.969,17.969,0,0,1,2.6-.394c1.151-.1,2.3-.09,3.458-.086.843,0,1.686-.047,2.529-.094.592-.033,1.184-.09,1.774-.151a17.729,17.729,0,0,0,2.725-.566c1.6-.426,3.2-.875,4.81-1.282,1.475-.373,2.962-.7,4.442-1.054a43.05,43.05,0,0,0,7.265-2.4c.747-.326,1.527-.578,2.293-.863l.629-.231a6.817,6.817,0,0,0,3.239-2.423c.845-1.155,1.756-2.255,2.705-3.324a24.031,24.031,0,0,1,3.589-3.41l.416-.307a1.655,1.655,0,0,0,.6-.822,5.144,5.144,0,0,1,.555-1.19,4.973,4.973,0,0,1,1.624-1.525q.9-.549,1.809-1.1a.813.813,0,0,0,.11-.1Z" transform="translate(-74.671 -197)" fill="#fff"/></svg>
-        <span class="logo-badge-label">GP Bullhound</span>
-      </div>
-      <div class="logo-text">Strategic Fit Engine <span>·</span> M&amp;A Intelligence</div>
-    </div>
-    <h1>Restricted Access</h1>
-    <p class="sub">This tool is for authorised use only.<br>Enter the access password to continue.</p>
-    <form method="POST" action="/auth">
-      <label for="password">Access Password</label>
-      <input type="password" id="password" name="password"
-             placeholder="Enter password" autofocus required>
-      <button type="submit">Continue →</button>
-      <div id="pw-error" style="display:none">Incorrect password. Please try again.</div>
-    </form>
-  </div>
-  <div class="footer">Not for distribution &nbsp;·&nbsp; Powered by GP Bullhound</div>
-</body>
-</html>"""
 
 
 # ---------------------------------------------------------------------------
@@ -660,6 +567,12 @@ LANDING_HTML = """<!DOCTYPE html>
       font-family:inherit;outline:none;transition:border .15s;background:#fff}
     input::placeholder{color:#aaa}
     input:focus{border-color:#252850}
+    select{border:1px solid #d0d5e8;padding:12px 14px;font-size:14px;color:#252850;
+      font-family:inherit;outline:none;transition:border .15s;background:#fff;
+      appearance:none;-webkit-appearance:none;cursor:pointer;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23252850' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 14px center}
+    select:focus{border-color:#252850}
     .hint{font-size:11px;color:#999;margin-top:5px;line-height:1.4}
 
     /* ── Submit ── */
@@ -690,13 +603,7 @@ LANDING_HTML = """<!DOCTYPE html>
 
 <header>
   <div class="logo">Strategic Fit Engine &nbsp;<span>·</span>&nbsp; M&amp;A Intelligence</div>
-  <div class="header-right" style="display:flex;align-items:center;gap:10px">
-    <span style="font-size:11px;color:#aaa;letter-spacing:.04em;text-transform:uppercase">Powered by</span>
-    <div style="background:#252850;padding:6px 14px;display:flex;align-items:center;gap:8px">
-      <svg xmlns="http://www.w3.org/2000/svg" width="83.729" height="65.861" viewBox="0 0 83.729 65.861" style="height:24px;width:auto"><path d="M145.038,197c.1.1.2.207.306.309a.355.355,0,0,0,.5.094c.078-.034.158-.064.231-.094a.7.7,0,0,1,.3.449,1.8,1.8,0,0,0,.137.358c.113.232.245.455.35.689a.8.8,0,0,0,.523.459c.426.134.848.283,1.273.422a4.67,4.67,0,0,1,1.585.844c.574.481,1.142.968,1.713,1.452.3.251.593.5.886.752a1.421,1.421,0,0,1,.54.855c.028.186.012.378.022.566.013.274.016.55.051.822a.971.971,0,0,0,.575.775,2.5,2.5,0,0,0,.28.132,17.342,17.342,0,0,0,2.68.835,3.631,3.631,0,0,1,.695.192,1.027,1.027,0,0,1,.67,1.3c-.038.15-.094.295-.139.443a3.085,3.085,0,0,0-.09,1.253c.026.222.067.442.108.662a1.654,1.654,0,0,1-.025.716,5.265,5.265,0,0,1-.812,1.91,3.657,3.657,0,0,1-1.262,1.123,13.617,13.617,0,0,1-1.348.581,3.1,3.1,0,0,1-.658.123.8.8,0,0,0-.548.306,1.792,1.792,0,0,1-1.5.677,4.88,4.88,0,0,1-2.954-.92,1.292,1.292,0,0,0-.953-.235,3.979,3.979,0,0,0-.851.2,7.019,7.019,0,0,0-3.112,2.349,3.159,3.159,0,0,0-.673,1.944c-.006.774.044,1.549.075,2.322a13.282,13.282,0,0,1-.078,2.5,5.247,5.247,0,0,1-.188.8,19.087,19.087,0,0,1-4.387,7.4c-.554.589-1.135,1.154-1.7,1.729-.164.165-.33.328-.494.492a6.688,6.688,0,0,0-1.014,1.3c-1.725,2.869-3.468,5.728-5.2,8.6a42.319,42.319,0,0,0-2.144,4.148c-.435.944-.844,1.9-1.21,2.876a7.841,7.841,0,0,0-.512,3.01c.017.568-.012,1.137.01,1.7a7.676,7.676,0,0,0,.132,1.308,2.628,2.628,0,0,0,1.277,1.71c.278.171.567.327.837.511a1.388,1.388,0,0,1,.62,1.028,1.674,1.674,0,0,1-1.025,1.71,2.842,2.842,0,0,1-.879.18c-.947.018-1.894.005-2.841-.009a1.229,1.229,0,0,1-.823-.386,2.3,2.3,0,0,1-.556-.89,6.318,6.318,0,0,1-.35-2.1c-.011-.525.022-1.051-.005-1.575-.069-1.307-.157-2.612-.245-3.918-.047-.7-.106-1.39-.171-2.084a2.1,2.1,0,0,0-.126-.6,1.781,1.781,0,0,1,.241-1.78,9.679,9.679,0,0,0,1.594-3.688,8.327,8.327,0,0,0,.025-2.644c-.095-.673-.206-1.345-.263-2.021a10.35,10.35,0,0,1,0-1.471c.04-.678.117-1.355.176-2.032.007-.076,0-.152,0-.247-.162-.019-.322-.043-.482-.056a28.429,28.429,0,0,1-4.219-.712,57.123,57.123,0,0,1-5.665-1.75,21.981,21.981,0,0,0-2.692-.7,25.049,25.049,0,0,0-3.4-.47c-.9-.066-1.8-.133-2.706-.156a15.573,15.573,0,0,0-3.086.216,3.48,3.48,0,0,0-1.049.346,1.673,1.673,0,0,0-.831,1c-.315.964-.613,1.937-.987,2.878a13.815,13.815,0,0,1-3.263,4.908,31.925,31.925,0,0,1-6.736,5.008,10.825,10.825,0,0,1-1.026.484q-1.3.547-2.6,1.072a2.921,2.921,0,0,0-1.085.726,9.845,9.845,0,0,0-.826.991c-.5.718-.994,1.447-1.463,2.189-.45.713-.889,1.435-1.291,2.176-.422.778-.8,1.582-1.188,2.376a2.879,2.879,0,0,0-.149.412,1.709,1.709,0,0,0,.283,1.611c.206.276.435.534.643.809a1.5,1.5,0,0,1,.151,1.518.6.6,0,0,1-.374.372,3.43,3.43,0,0,1-.769.2c-1.081.081-2.165.138-3.248.2a2.546,2.546,0,0,1-.54-.038,1.046,1.046,0,0,1-.827-.628,1.965,1.965,0,0,1-.114-1.553q.158-.423.342-.835c.458-1.029.934-2.051,1.38-3.086q.878-2.041,1.918-4a13.764,13.764,0,0,0,1.27-3.451c.106-.469.265-.925.395-1.389a1.863,1.863,0,0,1,.8-1.041,8.944,8.944,0,0,0,.935-.728,4.048,4.048,0,0,0,1.194-1.895c.8-2.74,1.75-5.434,2.665-8.139.4-1.188.718-2.406,1.072-3.61a.235.235,0,0,0,0-.073c-.26.176-.508.362-.772.521a9.348,9.348,0,0,1-2.234.926,13.335,13.335,0,0,1-4.288.511,8.826,8.826,0,0,1-3.243-.777,3.714,3.714,0,0,1-.976-.623,2.49,2.49,0,0,1-.562-.708,1.759,1.759,0,0,1,.2-.054,7.485,7.485,0,0,1,1.8.029,15.821,15.821,0,0,0,2.239.134,8.979,8.979,0,0,0,7.616-4.409c.495-.8.938-1.625,1.39-2.446a15.758,15.758,0,0,1,3.708-4.5,5.175,5.175,0,0,1,.729-.531,19.466,19.466,0,0,1,5.258-2.153,17.969,17.969,0,0,1,2.6-.394c1.151-.1,2.3-.09,3.458-.086.843,0,1.686-.047,2.529-.094.592-.033,1.184-.09,1.774-.151a17.729,17.729,0,0,0,2.725-.566c1.6-.426,3.2-.875,4.81-1.282,1.475-.373,2.962-.7,4.442-1.054a43.05,43.05,0,0,0,7.265-2.4c.747-.326,1.527-.578,2.293-.863l.629-.231a6.817,6.817,0,0,0,3.239-2.423c.845-1.155,1.756-2.255,2.705-3.324a24.031,24.031,0,0,1,3.589-3.41l.416-.307a1.655,1.655,0,0,0,.6-.822,5.144,5.144,0,0,1,.555-1.19,4.973,4.973,0,0,1,1.624-1.525q.9-.549,1.809-1.1a.813.813,0,0,0,.11-.1Z" transform="translate(-74.671 -197)" fill="#fff"/></svg>
-      <span style="font-size:12px;font-weight:700;color:#fff;letter-spacing:.02em;font-family:'IBM Plex Sans',sans-serif">GP Bullhound</span>
-    </div>
-  </div>
+  <div class="header-right">Confidential · Not for distribution</div>
 </header>
 
 <main>
@@ -796,6 +703,27 @@ LANDING_HTML = """<!DOCTYPE html>
             value="" required>
           <p class="hint" id="sector-hint">Be specific — vertical SaaS, FinTech payments, HR Tech, etc.</p>
         </div>
+        <div class="field">
+          <label id="size-label">Size Range</label>
+          <select name="size_range" id="size_range">
+            <option value="Any size">Any size</option>
+            <option value="Under £10m ARR">Under £10m ARR</option>
+            <option value="£10m–£50m ARR">£10m–£50m ARR</option>
+            <option value="£50m–£200m ARR">£50m–£200m ARR</option>
+            <option value="£200m+ ARR">£200m+ ARR</option>
+          </select>
+          <p class="hint" id="size-hint">Filter targets by ARR. Narrows the longlist to realistic deal candidates.</p>
+        </div>
+        <div class="field" id="sale-field" style="display:none">
+          <label id="sale-label">Type of Sale</label>
+          <select name="sale_type" id="sale_type">
+            <option value="Full Sale (100%)">Full Sale (100%)</option>
+            <option value="Majority Stake (control)">Majority Stake (control)</option>
+            <option value="Minority / Growth Investment">Minority / Growth Investment</option>
+            <option value="Strategic Merger">Strategic Merger</option>
+          </select>
+          <p class="hint" id="sale-hint">The exit structure sought — shapes which acquirers are surfaced and how the seller is valued.</p>
+        </div>
         <div class="field full">
           <label id="geo-label">Geography / Region</label>
           <input type="text" name="geography" id="geography"
@@ -828,6 +756,8 @@ var _copy = {
     companyPlaceholder: 'e.g. Salesforce, Duolingo, Stripe',
     sectorLabel: 'Target Sector',
     sectorHint: 'Be specific — vertical SaaS, FinTech payments, HR Tech, etc.',
+    sizeLabel: 'Target Size Range',
+    sizeHint: 'Filter targets by ARR. Narrows the longlist to realistic deal candidates.',
     geoLabel: 'Geography / Region',
     geoHint: 'Countries or regions to screen. Separate with / or commas.',
     btnText: 'Run Buy-Side Analysis →',
@@ -845,6 +775,8 @@ var _copy = {
     companyPlaceholder: 'e.g. Attensi, Leapsome, Wayflyer',
     sectorLabel: 'Sector',
     sectorHint: 'The seller sector — used to find relevant strategic and PE acquirers.',
+    sizeLabel: 'Seller ARR Range',
+    sizeHint: 'Seller\'s approximate ARR — used to match acquirer financial capacity.',
     geoLabel: 'Acquirer Geography',
     geoHint: 'Where to look for potential acquirers. Separate with / or commas.',
     btnText: 'Run Sell-Side Analysis →',
@@ -864,6 +796,7 @@ function switchMode(mode) {
   document.getElementById('tab-sell').className = 'mode-tab' + (mode === 'sell' ? ' active' : '');
   document.getElementById('presets-buy').style.display  = (mode === 'buy')  ? '' : 'none';
   document.getElementById('presets-sell').style.display = (mode === 'sell') ? '' : 'none';
+  document.getElementById('sale-field').style.display   = (mode === 'sell') ? '' : 'none';
   document.getElementById('rp-title').textContent    = c.title;
   document.getElementById('rp-subtitle').textContent = c.subtitle;
   document.getElementById('company-label').textContent = c.companyLabel;
@@ -871,6 +804,8 @@ function switchMode(mode) {
   document.getElementById('company').placeholder = c.companyPlaceholder;
   document.getElementById('sector-label').textContent = c.sectorLabel;
   document.getElementById('sector-hint').textContent  = c.sectorHint;
+  document.getElementById('size-label').textContent = c.sizeLabel;
+  document.getElementById('size-hint').textContent  = c.sizeHint;
   document.getElementById('geo-label').textContent = c.geoLabel;
   document.getElementById('geo-hint').textContent  = c.geoHint;
   document.getElementById('submit-btn').textContent = c.btnText;
@@ -902,7 +837,8 @@ function handleSubmit(e) {
 # Progress page HTML (returned after form submit)
 # ---------------------------------------------------------------------------
 
-def _progress_html(company: str, sector: str, geography: str, mode: str = "buy") -> str:
+def _progress_html(company: str, sector: str, geography: str, mode: str = "buy",
+                   size_range: str = "Any size", sale_type: str = "Full Sale (100%)") -> str:
     is_sell = (mode == "sell")
     param_label = "Seller"            if is_sell else "Buyer"
     s1_name     = "Seller Profile"    if is_sell else "Buyer Intelligence"
@@ -1048,10 +984,6 @@ def _progress_html(company: str, sector: str, geography: str, mode: str = "buy")
   <div class="logo">Strategic Fit Engine &nbsp;<span>·</span>&nbsp; M&amp;A Intelligence</div>
   <div class="header-right" style="display:flex;align-items:center;gap:12px">
     <a href="/" style="font-size:12px;color:#888;letter-spacing:.04em;text-decoration:none;font-weight:600">← New Analysis</a>
-    <div style="background:#252850;padding:6px 14px;display:flex;align-items:center;gap:8px">
-      <svg xmlns="http://www.w3.org/2000/svg" width="83.729" height="65.861" viewBox="0 0 83.729 65.861" style="height:24px;width:auto"><path d="M145.038,197c.1.1.2.207.306.309a.355.355,0,0,0,.5.094c.078-.034.158-.064.231-.094a.7.7,0,0,1,.3.449,1.8,1.8,0,0,0,.137.358c.113.232.245.455.35.689a.8.8,0,0,0,.523.459c.426.134.848.283,1.273.422a4.67,4.67,0,0,1,1.585.844c.574.481,1.142.968,1.713,1.452.3.251.593.5.886.752a1.421,1.421,0,0,1,.54.855c.028.186.012.378.022.566.013.274.016.55.051.822a.971.971,0,0,0,.575.775,2.5,2.5,0,0,0,.28.132,17.342,17.342,0,0,0,2.68.835,3.631,3.631,0,0,1,.695.192,1.027,1.027,0,0,1,.67,1.3c-.038.15-.094.295-.139.443a3.085,3.085,0,0,0-.09,1.253c.026.222.067.442.108.662a1.654,1.654,0,0,1-.025.716,5.265,5.265,0,0,1-.812,1.91,3.657,3.657,0,0,1-1.262,1.123,13.617,13.617,0,0,1-1.348.581,3.1,3.1,0,0,1-.658.123.8.8,0,0,0-.548.306,1.792,1.792,0,0,1-1.5.677,4.88,4.88,0,0,1-2.954-.92,1.292,1.292,0,0,0-.953-.235,3.979,3.979,0,0,0-.851.2,7.019,7.019,0,0,0-3.112,2.349,3.159,3.159,0,0,0-.673,1.944c-.006.774.044,1.549.075,2.322a13.282,13.282,0,0,1-.078,2.5,5.247,5.247,0,0,1-.188.8,19.087,19.087,0,0,1-4.387,7.4c-.554.589-1.135,1.154-1.7,1.729-.164.165-.33.328-.494.492a6.688,6.688,0,0,0-1.014,1.3c-1.725,2.869-3.468,5.728-5.2,8.6a42.319,42.319,0,0,0-2.144,4.148c-.435.944-.844,1.9-1.21,2.876a7.841,7.841,0,0,0-.512,3.01c.017.568-.012,1.137.01,1.7a7.676,7.676,0,0,0,.132,1.308,2.628,2.628,0,0,0,1.277,1.71c.278.171.567.327.837.511a1.388,1.388,0,0,1,.62,1.028,1.674,1.674,0,0,1-1.025,1.71,2.842,2.842,0,0,1-.879.18c-.947.018-1.894.005-2.841-.009a1.229,1.229,0,0,1-.823-.386,2.3,2.3,0,0,1-.556-.89,6.318,6.318,0,0,1-.35-2.1c-.011-.525.022-1.051-.005-1.575-.069-1.307-.157-2.612-.245-3.918-.047-.7-.106-1.39-.171-2.084a2.1,2.1,0,0,0-.126-.6,1.781,1.781,0,0,1,.241-1.78,9.679,9.679,0,0,0,1.594-3.688,8.327,8.327,0,0,0,.025-2.644c-.095-.673-.206-1.345-.263-2.021a10.35,10.35,0,0,1,0-1.471c.04-.678.117-1.355.176-2.032.007-.076,0-.152,0-.247-.162-.019-.322-.043-.482-.056a28.429,28.429,0,0,1-4.219-.712,57.123,57.123,0,0,1-5.665-1.75,21.981,21.981,0,0,0-2.692-.7,25.049,25.049,0,0,0-3.4-.47c-.9-.066-1.8-.133-2.706-.156a15.573,15.573,0,0,0-3.086.216,3.48,3.48,0,0,0-1.049.346,1.673,1.673,0,0,0-.831,1c-.315.964-.613,1.937-.987,2.878a13.815,13.815,0,0,1-3.263,4.908,31.925,31.925,0,0,1-6.736,5.008,10.825,10.825,0,0,1-1.026.484q-1.3.547-2.6,1.072a2.921,2.921,0,0,0-1.085.726,9.845,9.845,0,0,0-.826.991c-.5.718-.994,1.447-1.463,2.189-.45.713-.889,1.435-1.291,2.176-.422.778-.8,1.582-1.188,2.376a2.879,2.879,0,0,0-.149.412,1.709,1.709,0,0,0,.283,1.611c.206.276.435.534.643.809a1.5,1.5,0,0,1,.151,1.518.6.6,0,0,1-.374.372,3.43,3.43,0,0,1-.769.2c-1.081.081-2.165.138-3.248.2a2.546,2.546,0,0,1-.54-.038,1.046,1.046,0,0,1-.827-.628,1.965,1.965,0,0,1-.114-1.553q.158-.423.342-.835c.458-1.029.934-2.051,1.38-3.086q.878-2.041,1.918-4a13.764,13.764,0,0,0,1.27-3.451c.106-.469.265-.925.395-1.389a1.863,1.863,0,0,1,.8-1.041,8.944,8.944,0,0,0,.935-.728,4.048,4.048,0,0,0,1.194-1.895c.8-2.74,1.75-5.434,2.665-8.139.4-1.188.718-2.406,1.072-3.61a.235.235,0,0,0,0-.073c-.26.176-.508.362-.772.521a9.348,9.348,0,0,1-2.234.926,13.335,13.335,0,0,1-4.288.511,8.826,8.826,0,0,1-3.243-.777,3.714,3.714,0,0,1-.976-.623,2.49,2.49,0,0,1-.562-.708,1.759,1.759,0,0,1,.2-.054,7.485,7.485,0,0,1,1.8.029,15.821,15.821,0,0,0,2.239.134,8.979,8.979,0,0,0,7.616-4.409c.495-.8.938-1.625,1.39-2.446a15.758,15.758,0,0,1,3.708-4.5,5.175,5.175,0,0,1,.729-.531,19.466,19.466,0,0,1,5.258-2.153,17.969,17.969,0,0,1,2.6-.394c1.151-.1,2.3-.09,3.458-.086.843,0,1.686-.047,2.529-.094.592-.033,1.184-.09,1.774-.151a17.729,17.729,0,0,0,2.725-.566c1.6-.426,3.2-.875,4.81-1.282,1.475-.373,2.962-.7,4.442-1.054a43.05,43.05,0,0,0,7.265-2.4c.747-.326,1.527-.578,2.293-.863l.629-.231a6.817,6.817,0,0,0,3.239-2.423c.845-1.155,1.756-2.255,2.705-3.324a24.031,24.031,0,0,1,3.589-3.41l.416-.307a1.655,1.655,0,0,0,.6-.822,5.144,5.144,0,0,1,.555-1.19,4.973,4.973,0,0,1,1.624-1.525q.9-.549,1.809-1.1a.813.813,0,0,0,.11-.1Z" transform="translate(-74.671 -197)" fill="#fff"/></svg>
-      <span style="font-size:12px;font-weight:700;color:#fff;letter-spacing:.02em;font-family:'IBM Plex Sans',sans-serif">GP Bullhound</span>
-    </div>
   </div>
 </header>
 
@@ -1070,6 +1002,14 @@ def _progress_html(company: str, sector: str, geography: str, mode: str = "buy")
         <div class="param-key">Sector</div>
         <div class="param-val">{_h(sector)}</div>
       </div>
+      <div class="param-row">
+        <div class="param-key">Size Range</div>
+        <div class="param-val">{_h(size_range)}</div>
+      </div>
+      {f'''<div class="param-row">
+        <div class="param-key">Type of Sale</div>
+        <div class="param-val">{_h(sale_type)}</div>
+      </div>''' if is_sell else ''}
       <div class="param-row">
         <div class="param-key">Geography</div>
         <div class="param-val">{_h(geography)}</div>

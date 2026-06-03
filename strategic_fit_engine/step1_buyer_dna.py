@@ -148,7 +148,7 @@ def _with_retry(fn, retries: int = 5):
 
 COMBINED_STRATEGY_PROMPT = """You are a senior M&A analyst. Do ONE focused web search for "{buyer} acquisitions strategy financials 2024 2025" to get current data, then return the JSON below. Do not search more than 3 times total.
 
-Produce a buy-side intelligence brief for {buyer} targeting {sector}. Use web search results for financials and recent acquisitions; use your training knowledge for everything else. Return ONLY raw JSON — absolutely no markdown fences, no ```json, no preamble, no trailing text. Start your response with {{ and end with }}.
+Produce a buy-side intelligence brief for {buyer} targeting {sector}. Target company size range: {size_range} — reflect this in the target_brief and dry_powder fields (deal size, stage, revenue profile). Use web search results for financials and recent acquisitions; use your training knowledge for everything else. Return ONLY raw JSON — absolutely no markdown fences, no ```json, no preamble, no trailing text. Start your response with {{ and end with }}.
 
 Be concise — max 2 sentences per string field, max 5 items per array. Derive C1+C2 from competitor threats, C3+C4 from market signals.
 
@@ -213,13 +213,13 @@ def save(profile: Dict, path: Optional[Path] = None) -> None:
     print(f"  [Saved] {path}")
 
 
-def run(buyer: str, sector: str) -> Dict:
+def run(buyer: str, sector: str, size_range: str = "Any size") -> Dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
     client = anthropic.Anthropic(api_key=api_key)
 
-    prompt = COMBINED_STRATEGY_PROMPT.format(buyer=buyer, sector=sector)
+    prompt = COMBINED_STRATEGY_PROMPT.format(buyer=buyer, sector=sector, size_range=size_range)
     print(f"  Researching {buyer} via web search (financials, acquisitions, competitors)...")
 
     raw = _with_retry(

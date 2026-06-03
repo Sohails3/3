@@ -113,6 +113,7 @@ ELIGIBILITY RULES — an acquirer MUST pass ALL of these:
 2. Sufficient financial capacity: public company, well-capitalised corporate, or PE/growth fund with relevant AUM.
 3. Real company with a verifiable website. Never fabricate names.
 4. Do NOT repeat acquirers in the exclude list above.
+{size_clause}{sale_clause}
 
 TIER CLASSIFICATION — assign acquirer_tier to each acquirer:
 - Tier 1 (Strategic Natural): obvious strategic fit, would pay 20-30% above fair value to prevent rivals acquiring this capability. Approach LAST in the process to avoid price anchoring.
@@ -244,10 +245,35 @@ def save(data: Dict, path: Optional[Path] = None) -> None:
 
 def _run_batch(client, sector: str, geography: str, seller: str,
                strategic_summary: str, target_brief: str, dry_powder: str,
-               count: int, exclude: List[str], batch_label: str) -> List[Dict]:
+               count: int, exclude: List[str], batch_label: str,
+               size_range: str = "Any size",
+               sale_type: str = "Full Sale (100%)") -> List[Dict]:
     exclude_clause = (
         f"Do NOT repeat these already-identified acquirers: {', '.join(exclude)}.\n"
         if exclude else ""
+    )
+    size_clause = (
+        f"5. Acquirer must have sufficient financial capacity to fund an acquisition of a "
+        f"{size_range} ARR company. Exclude undercapitalised buyers that could not credibly "
+        f"fund a deal at this scale.\n"
+        if size_range and size_range.lower() != "any size" else ""
+    )
+    _SALE_GUIDANCE = {
+        "Minority / Growth Investment":
+            "weight the longlist heavily toward growth-equity and minority investors that take "
+            "non-control stakes; only include strategics that make minority/structured investments.",
+        "Majority Stake (control)":
+            "weight toward buyout funds and control-oriented strategics that acquire majority stakes.",
+        "Strategic Merger":
+            "weight toward trade/strategic buyers where a merger unlocks synergies; de-prioritise "
+            "pure financial sponsors.",
+        "Full Sale (100%)":
+            "include the full mix of control buyers — strategics and buyout funds capable of a 100% acquisition.",
+    }
+    sale_clause = (
+        f"6. Transaction type sought: {sale_type}. When building the longlist and assigning tiers, "
+        f"{_SALE_GUIDANCE.get(sale_type, 'match acquirers to this deal structure.')}\n"
+        if sale_type else ""
     )
     prompt = ACQUIRER_PROMPT.format(
         sector=sector,
@@ -258,6 +284,8 @@ def _run_batch(client, sector: str, geography: str, seller: str,
         dry_powder=dry_powder,
         count=count,
         exclude_clause=exclude_clause,
+        size_clause=size_clause,
+        sale_clause=sale_clause,
     )
 
     raw = _with_retry(lambda: _call_claude(client, prompt, max_tokens=6000))
@@ -274,7 +302,8 @@ def _run_batch(client, sector: str, geography: str, seller: str,
     return data.get("targets", [])
 
 
-def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None) -> Dict:
+def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
+        size_range: str = "Any size", sale_type: str = "Full Sale (100%)") -> Dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
@@ -292,7 +321,8 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None) -> Di
     print(f"  Batch 1/3: identifying first 6 acquirers...")
     batch_a = _run_batch(client, sector, geography, seller,
                          strategic_summary, target_brief, dry_powder,
-                         count=6, exclude=[], batch_label="A")
+                         count=6, exclude=[], batch_label="A", size_range=size_range,
+                         sale_type=sale_type)
 
     # Batch B — 6 more (focus on different tier / geography)
     exclude_names_b = [t.get("name", "") for t in batch_a if t.get("name")]
@@ -301,7 +331,8 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None) -> Di
     try:
         batch_b = _run_batch(client, sector, geography, seller,
                              strategic_summary, target_brief, dry_powder,
-                             count=6, exclude=exclude_names_b, batch_label="B")
+                             count=6, exclude=exclude_names_b, batch_label="B",
+                             size_range=size_range, sale_type=sale_type)
     except Exception as e:
         print(f"  [WARNING] Batch B failed ({e}). Continuing with batch A only.")
 
@@ -312,7 +343,8 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None) -> Di
     try:
         batch_c = _run_batch(client, sector, geography, seller,
                              strategic_summary, target_brief, dry_powder,
-                             count=4, exclude=exclude_names_c, batch_label="C")
+                             count=4, exclude=exclude_names_c, batch_label="C",
+                             size_range=size_range, sale_type=sale_type)
     except Exception as e:
         print(f"  [WARNING] Batch C failed ({e}). Continuing with batches A+B.")
 

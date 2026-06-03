@@ -118,6 +118,7 @@ STRICT ELIGIBILITY RULES — a company MUST pass ALL of these to be included:
    office does NOT qualify.
 3. Real company with a verifiable website confirmed via search. Never fabricate names.
 4. Do NOT repeat companies in the exclude list above.
+{size_clause}
 
 DATA ACCURACY RULES:
 - country: PRIMARY headquarters country only (where founders and C-suite are based).
@@ -268,11 +269,17 @@ def save(data: Dict, path: Optional[Path] = None) -> None:
 
 def _run_batch(client, sector: str, geography: str, buyer: str,
                strategic_summary: str, target_brief: str, dry_powder: str,
-               count: int, exclude: List[str], batch_label: str) -> List[Dict]:
+               count: int, exclude: List[str], batch_label: str,
+               size_range: str = "Any size") -> List[Dict]:
     """Run a single discovery batch, returning a list of target dicts."""
     exclude_clause = (
         f"Do NOT repeat these already-identified companies: {', '.join(exclude)}.\n"
         if exclude else ""
+    )
+    size_clause = (
+        f"5. Target ARR must be approximately in the range {size_range}. Exclude companies "
+        f"that are clearly outside this size band.\n"
+        if size_range and size_range.lower() != "any size" else ""
     )
     prompt = DISCOVERY_PROMPT.format(
         sector=sector,
@@ -283,6 +290,7 @@ def _run_batch(client, sector: str, geography: str, buyer: str,
         dry_powder=dry_powder,
         count=count,
         exclude_clause=exclude_clause,
+        size_clause=size_clause,
     )
 
     raw = _with_retry(lambda: _call_claude_with_search(client, prompt, max_tokens=6000))
@@ -299,7 +307,8 @@ def _run_batch(client, sector: str, geography: str, buyer: str,
     return data.get("targets", [])
 
 
-def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None) -> Dict:
+def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
+        size_range: str = "Any size") -> Dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
@@ -317,7 +326,7 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None) -> Di
     print(f"  Batch 1/2: identifying first 6 targets...")
     batch_a = _run_batch(client, sector, geography, buyer,
                          strategic_summary, target_brief, dry_powder,
-                         count=6, exclude=[], batch_label="A")
+                         count=6, exclude=[], batch_label="A", size_range=size_range)
 
     # Batch B — up to 4 more, excluding batch A; non-fatal if it fails
     exclude_names = [t.get("name", "") for t in batch_a if t.get("name")]
@@ -326,7 +335,8 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None) -> Di
     try:
         batch_b = _run_batch(client, sector, geography, buyer,
                              strategic_summary, target_brief, dry_powder,
-                             count=4, exclude=exclude_names, batch_label="B")
+                             count=4, exclude=exclude_names, batch_label="B",
+                             size_range=size_range)
     except Exception as e:
         print(f"  [WARNING] Batch B failed ({e}). Continuing with batch A only.")
 

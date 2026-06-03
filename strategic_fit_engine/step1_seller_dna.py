@@ -147,7 +147,7 @@ def _with_retry(fn, retries: int = 5):
 
 SELLER_PROFILE_PROMPT = """You are a senior M&A sell-side advisor at GP Bullhound. Do ONE focused web search for "{seller} company funding revenue product 2024 2025" to get current data, then return the JSON below. Do not search more than 3 times total.
 
-Produce a sell-side intelligence brief for {seller} — a company in {sector} that is exploring an exit. Your goal is to identify what makes this company attractive to acquirers, what comparable exits have been valued at, and which types of buyers would pay a strategic premium.
+Produce a sell-side intelligence brief for {seller} — a company in {sector} that is exploring an exit. Seller ARR range: {size_range} — reflect this in the dry_powder, valuation_range, and valuation_comps fields; only include comparable transactions of a similar scale. Transaction type sought: {sale_type} — tailor the analysis to this structure: a Full Sale (100%) targets control buyers and reflects a control premium; a Majority Stake targets buyout funds and control-oriented strategics; a Minority / Growth Investment targets growth-equity and minority investors and should be valued as a funding round (not a full exit); a Strategic Merger targets trade/strategic buyers seeking synergies. Reflect {sale_type} in the target_brief (ideal acquirer profile), valuation_range, valuation_comps (use comps of the same deal type), and the scoring criteria. Your goal is to identify what makes this company attractive to acquirers, what comparable exits have been valued at, and which types of buyers would pay a strategic premium.
 
 Derive C1 from the build-vs-buy urgency for potential acquirers. Derive C2 from the acquirer's financial capacity and M&A track record. Derive C3 from integration quality (will they retain the team and realise synergies). Derive C4 from the likelihood of paying above fair value (premium likelihood signals).
 
@@ -271,13 +271,15 @@ def save(profile: Dict, path: Optional[Path] = None) -> None:
     print(f"  [Saved] {path}")
 
 
-def run(seller: str, sector: str) -> Dict:
+def run(seller: str, sector: str, size_range: str = "Any size",
+        sale_type: str = "Full Sale (100%)") -> Dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
     client = anthropic.Anthropic(api_key=api_key)
 
-    prompt = SELLER_PROFILE_PROMPT.format(seller=seller, sector=sector)
+    prompt = SELLER_PROFILE_PROMPT.format(seller=seller, sector=sector,
+                                          size_range=size_range, sale_type=sale_type)
     print(f"  Researching {seller} (sell-side) via web search...")
 
     raw = _with_retry(
