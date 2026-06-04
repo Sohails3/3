@@ -87,6 +87,25 @@ def _fmt_emp(v) -> str:
     try: return f"{int(v):,}"
     except: return str(v)
 
+# Verification badge — reflects the Bigdata.com cross-check from Step 2.5.
+_VERIF_STYLE = {
+    "verified":   ("#0f7b3f", "✓ Verified · Bigdata.com"),
+    "partial":    ("#9a7b00", "◑ Partial · Bigdata.com"),
+    "unverified": ("#9a3b00", "⚠ Unverified"),
+    "not_found":  ("#9a0000", "✕ Not found"),
+}
+def _verif_badge(t) -> str:
+    v = t.get("verification") or {}
+    flag = v.get("flag")
+    if not flag or flag == "skipped":
+        return ""  # verification not run — render nothing
+    color, label = _VERIF_STYLE.get(flag, ("#555", flag))
+    notes = _h(v.get("notes", "")) if v.get("notes") else ""
+    title = f' title="{notes}"' if notes else ""
+    return (f'<span{title} style="display:inline-block;margin-top:6px;font-size:10px;'
+            f'font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:3px;'
+            f'color:#fff;background:{color}">{label}</span>')
+
 def _list_str(v) -> str:
     if isinstance(v, list):
         parts = [x for x in v if x != "Not publicly available"]
@@ -1159,6 +1178,7 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
     <div style="font-size:11px;color:#aab3c7;margin-top:3px">
       {_h(t.get('country',''))} · {_h(t.get('funding_stage',''))} · Raised: {_fmt_m(t.get('total_raised_usd_m'))} · ~{_fmt_emp(t.get('employees'))} employees
     </div>
+    {_verif_badge(t)}
   </div>
   <button class="mx" onclick="closeModal()">✕</button>
 </div>

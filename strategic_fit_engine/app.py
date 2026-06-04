@@ -164,6 +164,24 @@ def _run_pipeline(company: str, sector: str, geography: str,
         if n_tgt > 5:
             _add(session_id, "log", f"   · ... and {n_tgt - 5} more")
 
+        # ── Step 2.5 — Data Quality & Verification (Bigdata.com) ─────────
+        from strategic_fit_engine import verification
+        if verification.is_enabled():
+            who = "potential acquirers" if is_sell else "targets"
+            prov = verification.active_provider()
+            _add(session_id, "step", f"Verifying {who} against live data ({prov})", step=2)
+            tr["targets"] = verification.verify_targets(tr.get("targets", []), sector, geography)
+            vc = verification.summarize(tr.get("targets", []))
+            _add(session_id, "done",
+                 f"✓ Verification complete — {vc['verified']} confirmed, "
+                 f"{vc['partial']} partial, {vc['unverified'] + vc['not_found']} flagged for review")
+            for t in tr.get("targets", []):
+                v = t.get("verification", {})
+                if v.get("flag") in ("unverified", "not_found"):
+                    _add(session_id, "log", f"   ⚠ {t['name']}: {v.get('flag')} — {v.get('notes','')}")
+        else:
+            _add(session_id, "log", "   (Data verification not configured — skipping)")
+
         # ── Step 3 ──────────────────────────────────────────────────────
         step3_label = "Acquirer Fit Scoring (8 criteria)" if is_sell else "Strategic Fit Scoring (8 criteria, 2 batches)"
         _add(session_id, "step", f"Step 3 / 4 — {step3_label}", step=3)
@@ -776,7 +794,7 @@ var _copy = {
     sectorLabel: 'Sector',
     sectorHint: 'The seller sector — used to find relevant strategic and PE acquirers.',
     sizeLabel: 'Seller ARR Range',
-    sizeHint: 'Seller\'s approximate ARR — used to match acquirer financial capacity.',
+    sizeHint: 'Approximate seller ARR — used to match acquirer financial capacity.',
     geoLabel: 'Acquirer Geography',
     geoHint: 'Where to look for potential acquirers. Separate with / or commas.',
     btnText: 'Run Sell-Side Analysis →',
