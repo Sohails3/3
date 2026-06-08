@@ -120,6 +120,16 @@ STRICT ELIGIBILITY RULES — a company MUST pass ALL of these to be included:
 4. Do NOT repeat companies in the exclude list above.
 {size_clause}
 
+CANDIDATE QUALITY — this list goes to M&A bankers, so generic/obvious answers are worthless:
+- Do NOT just list the biggest household names — bankers already know those. Prioritise DIFFERENTIATED,
+  non-obvious targets: fast-growing scale-ups, adjacent-vertical players, international companies, and
+  consolidation plays in fragmented sub-sectors.
+- Apply PE-platform + bolt-on logic where relevant (companies a sponsor could build a platform around).
+- Aim for a MIX: at most 2-3 obvious-natural fits; the rest should be non-obvious names that demonstrate
+  real market knowledge a senior banker would respect.
+- Every rationale must be SPECIFIC — name the exact capability, product gap, customer segment, technology,
+  or synergy. Generic phrases ("strong strategic fit", "market leader", "synergies") are BANNED.
+
 DATA ACCURACY RULES:
 - country: PRIMARY headquarters country only (where founders and C-suite are based).
 - arr_usd_m: Use the most recent figure found via web search. If not publicly disclosed, estimate

@@ -115,6 +115,16 @@ ELIGIBILITY RULES — an acquirer MUST pass ALL of these:
 4. Do NOT repeat acquirers in the exclude list above.
 {size_clause}{sale_clause}
 
+CANDIDATE QUALITY — this list goes to M&A bankers, so generic/obvious answers are worthless:
+- Do NOT just list the obvious mega-cap strategics — bankers already know those. Prioritise DIFFERENTIATED,
+  non-obvious acquirers: international buyers, adjacent-sector entrants, fast-growing consolidators, and PE /
+  growth funds actively building platforms in this space (platform + bolt-on logic).
+- Aim for a MIX across tiers: a few obvious strategic naturals; the rest non-obvious buyers that demonstrate
+  real market knowledge a senior banker would respect.
+- Every rationale (buyer_fit_rationale / premium_rationale) must be SPECIFIC — name the exact capability gap,
+  product line, geography, or customer base the seller fills. Generic phrases ("strong strategic fit",
+  "market leader", "synergies") are BANNED.
+
 TIER CLASSIFICATION — assign acquirer_tier to each acquirer:
 - Tier 1 (Strategic Natural): obvious strategic fit, would pay 20-30% above fair value to prevent rivals acquiring this capability. Approach LAST in the process to avoid price anchoring.
 - Tier 2 (Strategic Stretch): compelling rationale, will compete on price if Tier 1 enters the process. Approach SECOND.

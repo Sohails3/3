@@ -671,13 +671,16 @@ footer strong{color:#fff}
 
 /* ── Print styles ── */
 @media print{
-  .fab-group,.cover-bar,nav,#mo{display:none!important}
+  /* Preserve the on-screen design in the PDF: keep all backgrounds/colors */
+  *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+  @page{ size:A4 landscape; margin:10mm; }
+  /* Hide only interactive / overlay chrome */
+  .fab-group,.pdf-btn,.pptx-btn,nav,#mo,.fbar,.modal{display:none!important}
   header{padding:16px 32px}
-  .page{padding:0 32px}
-  section{page-break-inside:avoid}
-  .fbar,.modal{display:none!important}
-  body{background:#fff!important;color:#000!important}
-  footer{color:#666!important}
+  .page{padding:0 24px}
+  /* Avoid splitting sections/cards/tables across pages */
+  section{page-break-inside:avoid; break-inside:avoid}
+  table,tr,.mh,.ms{break-inside:avoid}
 }
 """
 
