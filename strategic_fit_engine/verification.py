@@ -173,8 +173,11 @@ based in/around {geography}. Web search always returns *something*; a different 
 or an unrelated result, does NOT confirm the claim. If nothing in the evidence clearly matches the claimed \
 company, set exists=false and flag="not_found".
 
-For each matched company, cross-check the claimed figures (arr_usd_m, total_raised_usd_m, employees, \
-funding_stage, country) against the evidence and note material discrepancies (off ~30%+, or wrong stage/country).
+For each matched company, verify EACH financial metric against the evidence. For a metric, fill verified_figures \
+ONLY if a source in the evidence corroborates it — give {{"value": <number in USD millions>, "source": "<source \
+name or URL taken from the evidence>"}}. If no source corroborates a metric, set that metric to null — do NOT \
+guess or copy the claimed figure. Note any material discrepancy (claimed vs sourced off ~15%+, or wrong \
+stage/country) in discrepancies.
 
 Assign:
   - confidence: "high" (clearly the right company AND figures corroborated), "medium" (right company but \
@@ -192,7 +195,13 @@ Return ONLY raw JSON — no markdown, no preamble. Start with {{ and end with }}
       "exists": true,
       "confidence": "high|medium|low",
       "flag": "verified|partial|unverified|not_found",
-      "verified_figures": {{"revenue_or_arr_usd_m": null, "total_raised_usd_m": null, "employees": null}},
+      "verified_figures": {{
+        "arr_or_revenue_usd_m": {{"value": 30, "source": "businesswire.com/..."}},
+        "total_raised_or_fundsize_usd_m": null,
+        "employees": {{"value": 345, "source": "linkedin.com/..."}},
+        "market_cap_usd_m": null,
+        "cash_usd_m": null
+      }},
       "discrepancies": ["claimed ARR $50m vs sources ~$30m"],
       "source": "Exa",
       "notes": "one short sentence with the strongest corroborating or disconfirming fact"
@@ -246,6 +255,70 @@ def _judge_with_bigdata(client: anthropic.Anthropic, sector: str, geography: str
 
 
 # ---------------------------------------------------------------------------
+# Per-metric reconciliation — correct to source, or mark unverified
+# ---------------------------------------------------------------------------
+
+# metric key -> (target field, verified_figures key)
+_METRIC_MAP = {
+    "arr":        ("arr_usd_m",          "arr_or_revenue_usd_m"),
+    "raised":     ("total_raised_usd_m", "total_raised_or_fundsize_usd_m"),
+    "employees":  ("employees",          "employees"),
+    "market_cap": ("market_cap_usd_m",   "market_cap_usd_m"),
+    "cash":       ("cash_usd_m",         "cash_usd_m"),
+}
+_MISSING = (None, "", "Not publicly available", "N/A")
+
+
+def _to_num(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def _unverified_metrics(t: Dict) -> Dict:
+    """Mark every present financial figure as unverified (used when no verdict came back)."""
+    out = {}
+    for key, (field, _) in _METRIC_MAP.items():
+        if t.get(field) not in _MISSING:
+            cv = _to_num(t.get(field))
+            out[key] = {"status": "unverified", "source": None, "original": cv, "value": cv}
+    return out
+
+
+def _reconcile_metrics(t: Dict, verdict: Dict) -> Dict:
+    """Per metric: corroborated→verified; corroborated-but-different→correct in place; else→unverified.
+    Mutates t (overwrites corrected figures) and sets verdict['metrics'] + a coverage-based flag."""
+    vf = verdict.get("verified_figures") or {}
+    metrics: Dict[str, Dict] = {}
+    for key, (field, vfkey) in _METRIC_MAP.items():
+        claimed = _to_num(t.get(field))
+        src_obj = vf.get(vfkey)
+        sourced, source = None, None
+        if isinstance(src_obj, dict):
+            sourced, source = _to_num(src_obj.get("value")), src_obj.get("source")
+        elif isinstance(src_obj, (int, float)) and not isinstance(src_obj, bool):
+            sourced = float(src_obj)
+
+        if sourced is not None:
+            if claimed not in (None, 0) and abs(sourced - claimed) / abs(claimed) <= 0.15:
+                status = "verified"
+            else:
+                status = "corrected"
+                t[field] = sourced  # use the sourced value everywhere downstream
+            metrics[key] = {"status": status, "source": source, "original": claimed, "value": sourced}
+        elif t.get(field) not in _MISSING:
+            metrics[key] = {"status": "unverified", "source": None, "original": claimed, "value": claimed}
+
+    verdict["metrics"] = metrics
+    # Coverage-based flag (preserve not_found / non-existent companies)
+    if verdict.get("flag") != "not_found" and verdict.get("exists") is not False and metrics:
+        n_ok = sum(1 for m in metrics.values() if m["status"] in ("verified", "corrected"))
+        verdict["flag"] = "verified" if n_ok == len(metrics) else ("partial" if n_ok else "unverified")
+    return verdict
+
+
+# ---------------------------------------------------------------------------
 # Public entrypoint
 # ---------------------------------------------------------------------------
 
@@ -288,8 +361,12 @@ def verify_targets(targets: List[Dict], sector: str, geography: str,
 
     for t in targets:
         v = verdicts.get(_norm(t.get("name", "")))
-        t["verification"] = v or {"flag": "unverified", "confidence": "low",
-                                   "source": provider, "notes": "No verification result returned"}
+        if v:
+            t["verification"] = _reconcile_metrics(t, v)
+        else:
+            t["verification"] = {"flag": "unverified", "confidence": "low", "source": provider,
+                                 "notes": "Not verified (no result returned)",
+                                 "metrics": _unverified_metrics(t)}
     return targets
 
 

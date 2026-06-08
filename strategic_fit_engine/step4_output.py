@@ -109,6 +109,40 @@ def _verif_badge(t) -> str:
             f'font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:3px;'
             f'color:#fff;background:{color}">{label}</span>')
 
+def _vmark(t, key) -> str:
+    """Per-metric trust marker: green ✓ (source-verified/corrected) or muted 'unverified est.'.
+    Empty when verification didn't run for this metric."""
+    m = ((t.get("verification") or {}).get("metrics") or {}).get(key)
+    if not m:
+        return ""
+    st = m.get("status")
+    if st in ("verified", "corrected"):
+        src = _h(str(m.get("source") or "live source"))
+        if st == "corrected" and m.get("original") is not None:
+            tip = f"Corrected to source ({src}); model estimate was {m.get('original')}"
+        else:
+            tip = f"Verified against {src}"
+        return f' <span title="{tip}" style="color:#0f7b3f;font-weight:700">&#10003;</span>'
+    if st == "unverified":
+        return ' <span style="color:#9a3b00;font-size:10px;font-weight:600">· unverified est.</span>'
+    return ""
+
+def _provenance(t) -> str:
+    """One-line financial-data provenance summary for the detail/modal view."""
+    m = (t.get("verification") or {}).get("metrics") or {}
+    if not m:
+        return ""
+    n_ok = sum(1 for x in m.values() if x.get("status") in ("verified", "corrected"))
+    srcs = []
+    for x in m.values():
+        s = x.get("source")
+        if s and s not in srcs:
+            srcs.append(s)
+    src_txt = (" &middot; Sources: " + _h(", ".join(srcs[:3]))) if srcs else ""
+    prov = (t.get("verification") or {}).get("source") or "Exa"
+    return (f'<p style="font-size:11px;color:var(--muted);margin-top:8px">'
+            f'<strong>Financials:</strong> {n_ok}/{len(m)} source-verified (via {_h(prov)}){src_txt}</p>')
+
 def _list_str(v) -> str:
     if isinstance(v, list):
         parts = [x for x in v if x != "Not publicly available"]
@@ -1012,9 +1046,9 @@ def _sec_company_report(t: Dict, detail: Dict, rank: int, criteria: List[Dict],
     else:
         kpi_html = (
             f"<table><thead><tr><th>KPI</th><th>Value</th></tr></thead><tbody>"
-            f"<tr><td><strong>ARR / Revenue</strong></td><td>{_h(str(t.get('arr_usd_m','N/A')))}</td></tr>"
-            f"<tr><td><strong>Total Raised</strong></td><td>{raised}</td></tr>"
-            f"<tr><td><strong>Headcount</strong></td><td>{employees}</td></tr>"
+            f"<tr><td><strong>ARR / Revenue</strong></td><td>{_h(str(t.get('arr_usd_m','N/A')))}{_vmark(t,'arr')}</td></tr>"
+            f"<tr><td><strong>Total Raised</strong></td><td>{raised}{_vmark(t,'raised')}</td></tr>"
+            f"<tr><td><strong>Headcount</strong></td><td>{employees}{_vmark(t,'employees')}</td></tr>"
             f"<tr><td><strong>Funding Stage</strong></td><td>{_h(stage)}</td></tr>"
             f"</tbody></table>"
         )
@@ -1178,9 +1212,9 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
         meta_extra += f" &middot; Owner: {_h(_own)}"
     _mc, _cash = t.get("market_cap_usd_m"), t.get("cash_usd_m")
     if isinstance(_mc, (int, float)) and not isinstance(_mc, bool):
-        meta_extra += f" &middot; Mkt cap: {_fmt_m(_mc)}"
+        meta_extra += f" &middot; Mkt cap: {_fmt_m(_mc)}{_vmark(t,'market_cap')}"
     if isinstance(_cash, (int, float)) and not isinstance(_cash, bool):
-        meta_extra += f" &middot; Cash: {_fmt_m(_cash)}"
+        meta_extra += f" &middot; Cash: {_fmt_m(_cash)}{_vmark(t,'cash')}"
     _rma = [x for x in (t.get("relevant_ma") or [])
             if x and str(x).strip().lower() not in ("not publicly available", "n/a", "none", "")]
     relevant_ma_html = ""
@@ -1198,9 +1232,10 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
     </div>
     <div style="font-size:19px;font-weight:700">{_h(t.get('name',''))}</div>
     <div style="font-size:11px;color:#aab3c7;margin-top:3px">
-      {_h(t.get('country',''))} · {_h(t.get('funding_stage',''))} · Raised: {_fmt_m(t.get('total_raised_usd_m'))} · ~{_fmt_emp(t.get('employees'))} employees{meta_extra}
+      {_h(t.get('country',''))} · {_h(t.get('funding_stage',''))} · Raised: {_fmt_m(t.get('total_raised_usd_m'))}{_vmark(t,'raised')} · ~{_fmt_emp(t.get('employees'))}{_vmark(t,'employees')} employees{meta_extra}
     </div>
     {_verif_badge(t)}
+    {_provenance(t)}
   </div>
   <button class="mx" onclick="closeModal()">✕</button>
 </div>
@@ -1795,16 +1830,16 @@ def sec_targets(ts: Dict, bp: Dict) -> str:
             if own and str(own).lower() not in ("not publicly available", "n/a", "none", ""):
                 owner_txt = f" &middot; Owner: {_h(own)}"
 
-        # Right-column financials (sell-side adds market cap + cash when known)
-        fin_lines = (f"{arr_lbl}: {_fmt_m(t.get('arr_usd_m'), t.get('arr_estimated', False))}"
-                     f"<br>{raised_lbl}: {_fmt_m(t.get('total_raised_usd_m'))}")
+        # Right-column financials (sell-side adds market cap + cash when known); _vmark = trust marker
+        fin_lines = (f"{arr_lbl}: {_fmt_m(t.get('arr_usd_m'))}{_vmark(t,'arr')}"
+                     f"<br>{raised_lbl}: {_fmt_m(t.get('total_raised_usd_m'))}{_vmark(t,'raised')}")
         if is_sell:
             mc, cash = t.get("market_cap_usd_m"), t.get("cash_usd_m")
             if isinstance(mc, (int, float)) and not isinstance(mc, bool):
-                fin_lines += f"<br>Mkt cap: {_fmt_m(mc)}"
+                fin_lines += f"<br>Mkt cap: {_fmt_m(mc)}{_vmark(t,'market_cap')}"
             if isinstance(cash, (int, float)) and not isinstance(cash, bool):
-                fin_lines += f"<br>Cash: {_fmt_m(cash)}"
-        fin_lines += f"<br>Emp: {_fmt_emp(t.get('employees'))}"
+                fin_lines += f"<br>Cash: {_fmt_m(cash)}{_vmark(t,'cash')}"
+        fin_lines += f"<br>Emp: {_fmt_emp(t.get('employees'))}{_vmark(t,'employees')}"
 
         cards += f"""
 <div style="border:1px solid {border};border-left:4px solid {border};border-radius:4px;
@@ -1936,9 +1971,9 @@ def sec_top3(ts: Dict, bp: Dict, company_details: Optional[Dict] = None,
         if is_sell:
             _mc4, _cash4 = t.get("market_cap_usd_m"), t.get("cash_usd_m")
             if isinstance(_mc4, (int, float)) and not isinstance(_mc4, bool):
-                cash_mc_line4 += f' &nbsp;·&nbsp; Mkt cap: <strong style="color:var(--navy)">{_fmt_m(_mc4)}</strong>'
+                cash_mc_line4 += f' &nbsp;·&nbsp; Mkt cap: <strong style="color:var(--navy)">{_fmt_m(_mc4)}</strong>{_vmark(t,"market_cap")}'
             if isinstance(_cash4, (int, float)) and not isinstance(_cash4, bool):
-                cash_mc_line4 += f' &nbsp;·&nbsp; Cash: <strong style="color:var(--navy)">{_fmt_m(_cash4)}</strong>'
+                cash_mc_line4 += f' &nbsp;·&nbsp; Cash: <strong style="color:var(--navy)">{_fmt_m(_cash4)}</strong>{_vmark(t,"cash")}'
         _rma4 = [x for x in (t.get("relevant_ma") or [])
                  if x and str(x).strip().lower() not in ("not publicly available", "n/a", "none", "")]
         relevant_ma_block4 = ""
@@ -2037,8 +2072,8 @@ def sec_top3(ts: Dict, bp: Dict, company_details: Optional[Dict] = None,
       <table style="width:100%;border-collapse:collapse">{score_rows}</table>
       <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);
         font-size:11px;color:var(--muted)">
-        {arr_lbl4}: <strong style="color:var(--navy)">{_fmt_m(t.get('arr_usd_m'))}</strong> &nbsp;·&nbsp;
-        Employees: <strong style="color:var(--navy)">{_fmt_emp(t.get('employees'))}</strong> &nbsp;·&nbsp;
+        {arr_lbl4}: <strong style="color:var(--navy)">{_fmt_m(t.get('arr_usd_m'))}</strong>{_vmark(t,'arr')} &nbsp;·&nbsp;
+        Employees: <strong style="color:var(--navy)">{_fmt_emp(t.get('employees'))}</strong>{_vmark(t,'employees')} &nbsp;·&nbsp;
         {inv_lbl4}: <strong style="color:var(--navy)">{_h(_list_str(t.get('key_investors',[])))[:60]}</strong>{cash_mc_line4}
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
