@@ -149,11 +149,16 @@ DATA ACCURACY RULES:
     strategic_gap: "specific product or distribution gap the seller would fill" or "Not detected"
     existing_partnership: "acquirer already works with seller or has relationships in this space" or "Not detected"
 - readiness_score 1-10: 4+ appetite signals=8-10, 2-3=5-7, 0-1=1-4
+- vertical: the buyer category / capability angle that explains why this acquirer would buy the seller (e.g. "Application & Network Performance Monitoring", "Content Delivery Network", "Digital Media Software", "Data Analytics & BI", "Cybersecurity") — keep it short, reuse the same label across acquirers in the same category
+- ownership: explicit owner — "Public" if listed; otherwise the PE firm (e.g. "Vector Capital") or strategic parent (e.g. "Cisco") that controls it
+- market_cap_usd_m: for PUBLIC acquirers, current market cap in USD M; null for private / PE-owned
+- cash_usd_m: cash and equivalents on the balance sheet in USD M (dry powder to fund a deal); null if unknown
+- relevant_ma: up to 3 of this acquirer's MOST relevant recent acquisitions, each as "MMM-YY: Acquired <target> - <what it does in <=8 words>" (e.g. "Jul-22: Acquired Quortex - cloud video processing"); ASCII only, use a hyphen not a dash; empty list if none known
 - All string fields: ASCII characters only
 - Keep ALL string fields SHORT: product_description <= 25 words, all others <= 20 words
 
 Return ONLY valid JSON, no markdown fences, no preamble, no trailing text:
-{{"sector":"{sector}","geography":"{geography}","buyer":"{seller}","targets":[{{"name":"string","country":"string","founded":2010,"funding_stage":"Public","total_raised_usd_m":5000.0,"arr_usd_m":2000.0,"employees":5000,"product_description":"string max 25 words","key_customers":["string"],"key_investors":["string"],"recent_news":"string max 15 words","website":"string","buyer_fit_rationale":"string max 15 words","acquirer_tier":1,"approach_sequence":12,"premium_rationale":"string max 20 words","readiness_signals":{{"recent_fundraise_or_ipo":"string or Not detected","stated_ma_intent":"string or Not detected","competitor_acquisition":"string or Not detected","strategic_gap":"string or Not detected","existing_partnership":"string or Not detected"}},"readiness_score":7,"readiness_summary":"string max 15 words"}}]}}
+{{"sector":"{sector}","geography":"{geography}","buyer":"{seller}","targets":[{{"name":"string","country":"string","founded":2010,"funding_stage":"Public","total_raised_usd_m":5000.0,"arr_usd_m":2000.0,"employees":5000,"product_description":"string max 25 words","key_customers":["string"],"key_investors":["string"],"recent_news":"string max 15 words","website":"string","vertical":"string","ownership":"string","market_cap_usd_m":12000.0,"cash_usd_m":1500.0,"relevant_ma":["MMM-YY: Acquired X - what it does"],"buyer_fit_rationale":"string max 15 words","acquirer_tier":1,"approach_sequence":12,"premium_rationale":"string max 20 words","readiness_signals":{{"recent_fundraise_or_ipo":"string or Not detected","stated_ma_intent":"string or Not detected","competitor_acquisition":"string or Not detected","strategic_gap":"string or Not detected","existing_partnership":"string or Not detected"}},"readiness_score":7,"readiness_summary":"string max 15 words"}}]}}
 """
 
 
@@ -229,6 +234,20 @@ def normalize_acquirers(targets: List[Dict]) -> List[Dict]:
         clean["acquirer_tier"]     = int(t.get("acquirer_tier", 2)) if str(t.get("acquirer_tier", 2)).isdigit() else 2
         clean["approach_sequence"] = int(t.get("approach_sequence", 5)) if str(t.get("approach_sequence", 5)).isdigit() else 5
         clean["premium_rationale"] = _ascii_clean(str(t.get("premium_rationale", "")))
+
+        # Preserve banker cheat-sheet fields (vertical, ownership, financials, relevant M&A)
+        clean["vertical"]  = _ascii_clean(str(t.get("vertical", "")))
+        clean["ownership"] = _ascii_clean(str(t.get("ownership", "")))
+        for num_field in ("market_cap_usd_m", "cash_usd_m"):
+            val = t.get(num_field)
+            clean[num_field] = val if isinstance(val, (int, float)) and not isinstance(val, bool) else None
+        rma = t.get("relevant_ma") or []
+        if not isinstance(rma, list):
+            rma = [rma]
+        clean["relevant_ma"] = [
+            _ascii_clean(str(x)) for x in rma
+            if x and str(x).strip().lower() not in ("not publicly available", "n/a", "none", "")
+        ][:3]
 
         normalized.append(clean)
     return normalized

@@ -420,7 +420,8 @@ def merge_with_raw(scored_targets: List[Dict], raw_targets: List[Dict]) -> List[
         for field in ["funding_stage", "total_raised_usd_m", "arr_usd_m",
                       "employees", "product_description", "key_customers",
                       "key_investors", "founded", "recent_news", "website",
-                      "verification"]:
+                      "verification", "vertical", "ownership",
+                      "market_cap_usd_m", "cash_usd_m", "relevant_ma"]:
             if field not in scored and field in raw:
                 scored[field] = raw[field]
     return scored_targets

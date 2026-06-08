@@ -89,8 +89,8 @@ def _fmt_emp(v) -> str:
 
 # Verification badge — reflects the Bigdata.com cross-check from Step 2.5.
 _VERIF_STYLE = {
-    "verified":   ("#0f7b3f", "✓ Verified · Bigdata.com"),
-    "partial":    ("#9a7b00", "◑ Partial · Bigdata.com"),
+    "verified":   ("#0f7b3f", "✓ Verified"),
+    "partial":    ("#9a7b00", "◑ Partial"),
     "unverified": ("#9a3b00", "⚠ Unverified"),
     "not_found":  ("#9a0000", "✕ Not found"),
 }
@@ -100,6 +100,9 @@ def _verif_badge(t) -> str:
     if not flag or flag == "skipped":
         return ""  # verification not run — render nothing
     color, label = _VERIF_STYLE.get(flag, ("#555", flag))
+    src = v.get("source")
+    if src and flag in ("verified", "partial"):
+        label = f"{label} · {_h(src)}"  # e.g. "✓ Verified · Exa"
     notes = _h(v.get("notes", "")) if v.get("notes") else ""
     title = f' title="{notes}"' if notes else ""
     return (f'<span{title} style="display:inline-block;margin-top:6px;font-size:10px;'
@@ -1168,6 +1171,25 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
     risks = t.get("deal_breaker_risks",[])
     risk_html = " ".join(f'<span class="risk">⚠ {_h(r)}</span>' for r in risks) if risks else '<span style="color:var(--green);font-size:12px">None identified</span>'
 
+    # Banker cheat-sheet extras (sell-side fields; render only when present)
+    _own = t.get("ownership", "")
+    meta_extra = ""
+    if _own and str(_own).lower() not in ("not publicly available", "n/a", "none", ""):
+        meta_extra += f" &middot; Owner: {_h(_own)}"
+    _mc, _cash = t.get("market_cap_usd_m"), t.get("cash_usd_m")
+    if isinstance(_mc, (int, float)) and not isinstance(_mc, bool):
+        meta_extra += f" &middot; Mkt cap: {_fmt_m(_mc)}"
+    if isinstance(_cash, (int, float)) and not isinstance(_cash, bool):
+        meta_extra += f" &middot; Cash: {_fmt_m(_cash)}"
+    _rma = [x for x in (t.get("relevant_ma") or [])
+            if x and str(x).strip().lower() not in ("not publicly available", "n/a", "none", "")]
+    relevant_ma_html = ""
+    if _rma:
+        _items = "".join(f"<li>{_h(x)}</li>" for x in _rma)
+        relevant_ma_html = ('<div class="ms"><h4>Recent M&amp;A</h4>'
+                            '<ul style="margin:0;padding-left:18px;font-size:12px;color:#4a5568;line-height:1.6">'
+                            f'{_items}</ul></div>')
+
     return f"""
 <div class="mh">
   <div>
@@ -1176,7 +1198,7 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
     </div>
     <div style="font-size:19px;font-weight:700">{_h(t.get('name',''))}</div>
     <div style="font-size:11px;color:#aab3c7;margin-top:3px">
-      {_h(t.get('country',''))} · {_h(t.get('funding_stage',''))} · Raised: {_fmt_m(t.get('total_raised_usd_m'))} · ~{_fmt_emp(t.get('employees'))} employees
+      {_h(t.get('country',''))} · {_h(t.get('funding_stage',''))} · Raised: {_fmt_m(t.get('total_raised_usd_m'))} · ~{_fmt_emp(t.get('employees'))} employees{meta_extra}
     </div>
     {_verif_badge(t)}
   </div>
@@ -1195,6 +1217,7 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
   <div class="ms"><h4>Key Investors &amp; Customers</h4>
     <p><strong>Investors:</strong> {_h(_list_str(t.get('key_investors',[])))}<br>
     <strong>Customers:</strong> {_h(_list_str(t.get('key_customers',[])))}</p></div>
+  {relevant_ma_html}
   <div class="ms"><h4>Deal Risks</h4><p>{risk_html}</p></div>
 </div>"""
 
@@ -1726,9 +1749,11 @@ def sec_targets(ts: Dict, bp: Dict) -> str:
             if v and v.lower() not in ("not detected", "not publicly available", "n/a", "none")
         )
 
-        # Sell-side: tier badge + approach sequence badge
+        # Sell-side: tier badge + approach sequence badge + vertical/ownership
         tier_badge = ""
         seq_badge  = ""
+        vert_badge = ""
+        owner_txt  = ""
         if is_sell:
             acq_tier = t.get("acquirer_tier", 0)
             acq_seq  = t.get("approach_sequence", 0)
@@ -1758,6 +1783,28 @@ def sec_targets(ts: Dict, bp: Dict) -> str:
                     f'color:#991b1b;font-size:10px;padding:1px 7px;border-radius:3px;'
                     f'margin-right:4px;margin-top:3px">&#9650; {_h(prem_rat)}</span>'
                 )
+            # vertical badge + ownership inline (banker cheat-sheet fields)
+            vert = t.get("vertical", "")
+            if vert and str(vert).lower() not in ("not publicly available", "n/a", "none", ""):
+                vert_badge = (
+                    f'<span style="background:#eef2f7;color:#334155;font-size:10px;font-weight:700;'
+                    f'padding:2px 9px;border-radius:3px;letter-spacing:.3px;border:1px solid #cbd5e1">'
+                    f'{_h(vert)}</span>'
+                )
+            own = t.get("ownership", "")
+            if own and str(own).lower() not in ("not publicly available", "n/a", "none", ""):
+                owner_txt = f" &middot; Owner: {_h(own)}"
+
+        # Right-column financials (sell-side adds market cap + cash when known)
+        fin_lines = (f"{arr_lbl}: {_fmt_m(t.get('arr_usd_m'), t.get('arr_estimated', False))}"
+                     f"<br>{raised_lbl}: {_fmt_m(t.get('total_raised_usd_m'))}")
+        if is_sell:
+            mc, cash = t.get("market_cap_usd_m"), t.get("cash_usd_m")
+            if isinstance(mc, (int, float)) and not isinstance(mc, bool):
+                fin_lines += f"<br>Mkt cap: {_fmt_m(mc)}"
+            if isinstance(cash, (int, float)) and not isinstance(cash, bool):
+                fin_lines += f"<br>Cash: {_fmt_m(cash)}"
+        fin_lines += f"<br>Emp: {_fmt_emp(t.get('employees'))}"
 
         cards += f"""
 <div style="border:1px solid {border};border-left:4px solid {border};border-radius:4px;
@@ -1769,18 +1816,19 @@ def sec_targets(ts: Dict, bp: Dict) -> str:
   <div style="flex:1;min-width:0">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
       <strong style="font-size:14px;color:var(--navy)">{_h(t.get('name',''))}</strong>
-      <span style="font-size:11px;color:var(--muted)">{_h(t.get('country',''))} · {_h(t.get('funding_stage',''))}</span>
+      <span style="font-size:11px;color:var(--muted)">{_h(t.get('country',''))} · {_h(t.get('funding_stage',''))}{owner_txt}</span>
       <span style="background:{badge_bg};color:{badge_c};font-size:10px;font-weight:700;
         padding:2px 8px;border-radius:3px;letter-spacing:.5px">{total}/{maxs}</span>
       {tier_badge}
       {seq_badge}
+      {vert_badge}
     </div>
     <p style="font-size:12px;color:#4a5568;line-height:1.55;margin-bottom:4px">{_h(fit)}</p>
     <div style="margin-top:4px">{signal_pills}</div>
     {risk_line}
   </div>
   <div style="min-width:90px;text-align:right;font-size:11px;color:var(--muted);white-space:nowrap">
-    {arr_lbl}: {_fmt_m(t.get('arr_usd_m'), t.get('arr_estimated', False))}<br>{raised_lbl}: {_fmt_m(t.get('total_raised_usd_m'))}<br>Emp: {_fmt_emp(t.get('employees'))}
+    {fin_lines}
   </div>
 </div>"""
 
@@ -1883,6 +1931,26 @@ def sec_top3(ts: Dict, bp: Dict, company_details: Optional[Dict] = None,
         )
         risk_items = "".join(f'<li style="font-size:11px;color:#B45309">⚠ {_h(r)}</li>' for r in risks[:3])
 
+        # Banker fields for Top-3 detail (sell-side): cash/mkt-cap line + recent M&A block
+        cash_mc_line4 = ""
+        if is_sell:
+            _mc4, _cash4 = t.get("market_cap_usd_m"), t.get("cash_usd_m")
+            if isinstance(_mc4, (int, float)) and not isinstance(_mc4, bool):
+                cash_mc_line4 += f' &nbsp;·&nbsp; Mkt cap: <strong style="color:var(--navy)">{_fmt_m(_mc4)}</strong>'
+            if isinstance(_cash4, (int, float)) and not isinstance(_cash4, bool):
+                cash_mc_line4 += f' &nbsp;·&nbsp; Cash: <strong style="color:var(--navy)">{_fmt_m(_cash4)}</strong>'
+        _rma4 = [x for x in (t.get("relevant_ma") or [])
+                 if x and str(x).strip().lower() not in ("not publicly available", "n/a", "none", "")]
+        relevant_ma_block4 = ""
+        if _rma4:
+            _items4 = "".join(f'<li style="font-size:11px;color:#4a5568;margin-bottom:2px">{_h(x)}</li>' for x in _rma4)
+            relevant_ma_block4 = (
+                '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">'
+                '<p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;'
+                'color:var(--muted);margin-bottom:6px">Recent M&amp;A</p>'
+                f'<ul style="list-style:none;padding:0;margin:0">{_items4}</ul></div>'
+            )
+
         # Build readiness HTML outside the f-string to avoid {{}} issues
         t_signals = t.get("readiness_signals") or {}
         active_signals = {k: v for k, v in t_signals.items()
@@ -1971,7 +2039,7 @@ def sec_top3(ts: Dict, bp: Dict, company_details: Optional[Dict] = None,
         font-size:11px;color:var(--muted)">
         {arr_lbl4}: <strong style="color:var(--navy)">{_fmt_m(t.get('arr_usd_m'))}</strong> &nbsp;·&nbsp;
         Employees: <strong style="color:var(--navy)">{_fmt_emp(t.get('employees'))}</strong> &nbsp;·&nbsp;
-        {inv_lbl4}: <strong style="color:var(--navy)">{_h(_list_str(t.get('key_investors',[])))[:60]}</strong>
+        {inv_lbl4}: <strong style="color:var(--navy)">{_h(_list_str(t.get('key_investors',[])))[:60]}</strong>{cash_mc_line4}
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
         <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
@@ -1979,6 +2047,7 @@ def sec_top3(ts: Dict, bp: Dict, company_details: Optional[Dict] = None,
         {readiness_html}
         <p style="font-size:11px;color:#4a5568;margin-top:6px;font-style:italic">{readiness_summary_html}</p>
       </div>
+      {relevant_ma_block4}
     </div>
   </div>
 </div>"""
