@@ -110,12 +110,14 @@ def _run_pipeline(company: str, sector: str, geography: str,
     """Runs all 4 steps sequentially in a background thread."""
     _env_path = Path(__file__).parent.parent / ".env"
     if _env_path.exists():
+        # .env wins over any pre-set shell var (e.g. a stale ANTHROPIC_API_KEY=sk-ant-yourkey
+        # placeholder exported in the user's profile). Guarded by exists(): on Railway there is
+        # no .env file, so this block is skipped and Railway's injected vars are used as-is.
         for line in _env_path.read_text().splitlines():
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 k, _, v = line.partition("=")
-                if k.strip() not in os.environ:
-                    os.environ[k.strip()] = v.strip()
+                os.environ[k.strip()] = v.strip()
 
     is_sell = (mode == "sell")
     output_dir = BASE / "output" / session_id

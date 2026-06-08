@@ -35,7 +35,7 @@ import anthropic
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 MODEL = "claude-sonnet-4-6"
 MCP_BETA = "mcp-client-2025-04-04"
