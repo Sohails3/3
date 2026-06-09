@@ -74,9 +74,14 @@ def _src_note(sources: List[str], live: bool = False) -> str:
     )
 
 def _fmt_m(v, estimated: bool = False) -> str:
-    if v in (None,"Not publicly available","N/A"): return "N/A"
+    if v in (None,"Not publicly available","N/A",""): return "N/A"
     try:
-        label = f"€{float(v):.0f}M"
+        f = float(v)
+        if abs(f) >= 1000:                       # show €1000M+ as billions
+            num = f"{f/1000.0:.1f}".rstrip("0").rstrip(".")
+            label = f"€{num}B"
+        else:
+            label = f"€{f:.0f}M"
         if estimated:
             label += " <span style='font-size:10px;color:#9ca3af;font-weight:400'>(est.)</span>"
         return label
@@ -86,6 +91,13 @@ def _fmt_emp(v) -> str:
     if v in (None,"Not publicly available"): return "N/A"
     try: return f"{int(v):,}"
     except: return str(v)
+
+def _capital_stat(t):
+    """Capital line for an acquirer. Public companies don't 'raise' — the model
+    often stores their market cap in total_raised_usd_m — so label it Mkt cap."""
+    if str(t.get("funding_stage", "")).strip().lower() == "public":
+        return "Mkt cap", _fmt_m(t.get("market_cap_usd_m") or t.get("total_raised_usd_m"))
+    return "Raised", _fmt_m(t.get("total_raised_usd_m"))
 
 # Verification badge — reflects the Bigdata.com cross-check from Step 2.5.
 _VERIF_STYLE = {
@@ -1235,7 +1247,7 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
     </div>
     <div style="font-size:19px;font-weight:700">{_h(t.get('name',''))}</div>
     <div style="font-size:11px;color:#aab3c7;margin-top:3px">
-      {_h(t.get('country',''))} · {_h(t.get('funding_stage',''))} · Raised: {_fmt_m(t.get('total_raised_usd_m'))}{_vmark(t,'raised')} · ~{_fmt_emp(t.get('employees'))}{_vmark(t,'employees')} employees{meta_extra}
+      {_h(t.get('country',''))} · {_h(t.get('funding_stage',''))} · {_capital_stat(t)[0]}: {_capital_stat(t)[1]}{_vmark(t,'raised')} · ~{_fmt_emp(t.get('employees'))}{_vmark(t,'employees')} employees{meta_extra}
     </div>
     {_verif_badge(t)}
     {_provenance(t)}
@@ -1287,7 +1299,7 @@ def sec_exec(bp: Dict, ts: Dict, dcf: Optional[Dict] = None) -> str:
         t_maxs   = t.get("max_score", maxs)
         t_fit    = _h(t.get("strategic_fit_summary", t.get("product_profile", "")))
         t_arr    = _fmt_m(t.get("arr_usd_m"), t.get("arr_estimated", False))
-        t_raised = _fmt_m(t.get("total_raised_usd_m"))
+        t_cap_lbl, t_raised = _capital_stat(t)
         t_emp    = _fmt_emp(t.get("employees"))
         t_rank   = t.get("rank", "")
         top3_cards_html += f"""
@@ -1309,7 +1321,7 @@ def sec_exec(bp: Dict, ts: Dict, dcf: Optional[Dict] = None) -> str:
         <div style="display:flex;gap:16px;font-size:10.5px;color:var(--muted);
           padding-top:8px;border-top:1px solid var(--border)">
           <span>ARR: <strong style="color:var(--navy)">{t_arr}</strong></span>
-          <span>Raised: <strong style="color:var(--navy)">{t_raised}</strong></span>
+          <span>{t_cap_lbl}: <strong style="color:var(--navy)">{t_raised}</strong></span>
           <span>Employees: <strong style="color:var(--navy)">{t_emp}</strong></span>
         </div>
       </div>"""
