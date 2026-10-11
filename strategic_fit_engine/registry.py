@@ -33,11 +33,20 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-SLICE_SICS = ["62011", "62012", "62020", "62090", "58290", "63110"]
+# SIC codes loaded in the arbitrex database. SOFTWARE_SICS are the default for candidate
+# searches; telecoms/hardware codes are only used when the buyer or seller is in them.
+SOFTWARE_SICS = ["62011", "62012", "62020", "62090", "58290", "63110",
+                 "63990", "63120", "62030", "58210"]
+TELECOM_HW_SICS = ["61100", "61200", "61900", "95110", "26110", "26200"]
+SLICE_SICS = SOFTWARE_SICS + TELECOM_HW_SICS
 SIC_LABELS = {
     "62011": "video game development", "62012": "business & domestic software",
     "62020": "IT consultancy", "62090": "other IT services", "58290": "software publishing",
-    "63110": "data processing & hosting",
+    "63110": "data processing & hosting", "63990": "other information services",
+    "63120": "web portals", "62030": "computer facilities management",
+    "58210": "games publishing", "61100": "wired telecoms", "61200": "wireless telecoms",
+    "61900": "other telecoms", "95110": "computer repair", "26110": "electronic components",
+    "26200": "computer hardware",
 }
 SOFTWARE_HINTS = ("software", "saas", "tech", "it ", "it/", "digital", "data", "ai", "cloud",
                   "cyber", "platform", "fintech", "edtech", "healthtech", "proptech", "insurtech",
@@ -265,8 +274,8 @@ def target_candidates(buyer_profile: Dict, sector: str, geography: str, industry
     sics = sorted({s for a in acqs for s in (a.get("sics") or []) if s in SLICE_SICS})
     if not sics:
         if not _is_software(sector, industry):
-            return []   # the database only covers UK software / IT companies
-        sics = SLICE_SICS
+            return []   # the database only covers UK software / IT / telecoms companies
+        sics = SOFTWARE_SICS
     emp_mid = None
     emps = [a["employees"] for a in acqs if a.get("employees")]
     if len(emps) >= 2:
@@ -344,7 +353,7 @@ def acquirer_candidates(seller: str, sector: str, geography: str, industry: str 
     if not sics:
         if not _is_software(sector, industry):
             return []
-        sics = SLICE_SICS
+        sics = SOFTWARE_SICS
     rows = _query(_ACQUIRER_SQL, {"sics": sics, "limit": limit})
     return [dict(group=r[0], deals=r[1], last_deal=r[2], recent_targets=r[3], entities=r[4])
             for r in rows]
