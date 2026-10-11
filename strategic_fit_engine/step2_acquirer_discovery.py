@@ -25,6 +25,11 @@ from typing import Any, Dict, List, Optional
 import anthropic
 from dotenv import load_dotenv
 
+try:  # package import (normal path, via app.py)
+    from strategic_fit_engine import industry as _industry
+except ImportError:  # direct script execution from inside the package dir
+    import industry as _industry
+
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -276,7 +281,8 @@ def _run_batch(client, sector: str, geography: str, seller: str,
                strategic_summary: str, target_brief: str, dry_powder: str,
                count: int, exclude: List[str], batch_label: str,
                size_range: str = "Any size",
-               sale_type: str = "Full Sale (100%)") -> List[Dict]:
+               sale_type: str = "Full Sale (100%)",
+               industry: str = "") -> List[Dict]:
     exclude_clause = (
         f"Do NOT repeat these already-identified acquirers: {', '.join(exclude)}.\n"
         if exclude else ""
@@ -317,6 +323,8 @@ def _run_batch(client, sector: str, geography: str, seller: str,
         sale_clause=sale_clause,
     )
 
+    prompt = _industry.context_block(industry, sector) + prompt
+
     raw = _with_retry(lambda: _call_claude(client, prompt, max_tokens=6000))
 
     debug_path = Path(__file__).parent.parent / ".tmp" / f"debug_step2_sell_{batch_label}.txt"
@@ -332,7 +340,8 @@ def _run_batch(client, sector: str, geography: str, seller: str,
 
 
 def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
-        size_range: str = "Any size", sale_type: str = "Full Sale (100%)") -> Dict:
+        size_range: str = "Any size", sale_type: str = "Full Sale (100%)",
+        industry: str = "") -> Dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
@@ -351,7 +360,7 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
     batch_a = _run_batch(client, sector, geography, seller,
                          strategic_summary, target_brief, dry_powder,
                          count=6, exclude=[], batch_label="A", size_range=size_range,
-                         sale_type=sale_type)
+                         sale_type=sale_type, industry=industry)
 
     # Batch B — 6 more (focus on different tier / geography)
     exclude_names_b = [t.get("name", "") for t in batch_a if t.get("name")]
@@ -361,7 +370,7 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
         batch_b = _run_batch(client, sector, geography, seller,
                              strategic_summary, target_brief, dry_powder,
                              count=6, exclude=exclude_names_b, batch_label="B",
-                             size_range=size_range, sale_type=sale_type)
+                             size_range=size_range, sale_type=sale_type, industry=industry)
     except Exception as e:
         print(f"  [WARNING] Batch B failed ({e}). Continuing with batch A only.")
 
@@ -373,7 +382,7 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
         batch_c = _run_batch(client, sector, geography, seller,
                              strategic_summary, target_brief, dry_powder,
                              count=4, exclude=exclude_names_c, batch_label="C",
-                             size_range=size_range, sale_type=sale_type)
+                             size_range=size_range, sale_type=sale_type, industry=industry)
     except Exception as e:
         print(f"  [WARNING] Batch C failed ({e}). Continuing with batches A+B.")
 

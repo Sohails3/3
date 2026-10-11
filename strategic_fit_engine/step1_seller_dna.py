@@ -26,6 +26,11 @@ from typing import Any, Dict, List, Optional
 import anthropic
 from dotenv import load_dotenv
 
+try:  # package import (normal path, via app.py)
+    from strategic_fit_engine import industry as _industry
+except ImportError:  # direct script execution from inside the package dir
+    import industry as _industry
+
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -272,7 +277,7 @@ def save(profile: Dict, path: Optional[Path] = None) -> None:
 
 
 def run(seller: str, sector: str, size_range: str = "Any size",
-        sale_type: str = "Full Sale (100%)") -> Dict:
+        sale_type: str = "Full Sale (100%)", industry: str = "") -> Dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
@@ -280,6 +285,8 @@ def run(seller: str, sector: str, size_range: str = "Any size",
 
     prompt = SELLER_PROFILE_PROMPT.format(seller=seller, sector=sector,
                                           size_range=size_range, sale_type=sale_type)
+    # Industry scope leads the prompt so it frames every downstream judgement.
+    prompt = _industry.context_block(industry, sector) + prompt
     print(f"  Researching {seller} (sell-side) via web search...")
 
     raw = _with_retry(

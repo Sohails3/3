@@ -25,6 +25,11 @@ from typing import Any, Dict, List, Optional
 import anthropic
 from dotenv import load_dotenv
 
+try:  # package import (normal path, via app.py)
+    from strategic_fit_engine import industry as _industry
+except ImportError:  # direct script execution from inside the package dir
+    import industry as _industry
+
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -280,7 +285,7 @@ def save(data: Dict, path: Optional[Path] = None) -> None:
 def _run_batch(client, sector: str, geography: str, buyer: str,
                strategic_summary: str, target_brief: str, dry_powder: str,
                count: int, exclude: List[str], batch_label: str,
-               size_range: str = "Any size") -> List[Dict]:
+               size_range: str = "Any size", industry: str = "") -> List[Dict]:
     """Run a single discovery batch, returning a list of target dicts."""
     exclude_clause = (
         f"Do NOT repeat these already-identified companies: {', '.join(exclude)}.\n"
@@ -303,6 +308,8 @@ def _run_batch(client, sector: str, geography: str, buyer: str,
         size_clause=size_clause,
     )
 
+    prompt = _industry.context_block(industry, sector) + prompt
+
     raw = _with_retry(lambda: _call_claude_with_search(client, prompt, max_tokens=6000))
 
     debug_path = Path(__file__).parent.parent / ".tmp" / f"debug_step2_{batch_label}.txt"
@@ -318,7 +325,7 @@ def _run_batch(client, sector: str, geography: str, buyer: str,
 
 
 def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
-        size_range: str = "Any size") -> Dict:
+        size_range: str = "Any size", industry: str = "") -> Dict:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set")
@@ -336,7 +343,8 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
     print(f"  Batch 1/2: identifying first 6 targets...")
     batch_a = _run_batch(client, sector, geography, buyer,
                          strategic_summary, target_brief, dry_powder,
-                         count=6, exclude=[], batch_label="A", size_range=size_range)
+                         count=6, exclude=[], batch_label="A", size_range=size_range,
+                         industry=industry)
 
     # Batch B — up to 4 more, excluding batch A; non-fatal if it fails
     exclude_names = [t.get("name", "") for t in batch_a if t.get("name")]
@@ -346,7 +354,7 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
         batch_b = _run_batch(client, sector, geography, buyer,
                              strategic_summary, target_brief, dry_powder,
                              count=4, exclude=exclude_names, batch_label="B",
-                             size_range=size_range)
+                             size_range=size_range, industry=industry)
     except Exception as e:
         print(f"  [WARNING] Batch B failed ({e}). Continuing with batch A only.")
 

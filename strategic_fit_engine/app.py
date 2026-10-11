@@ -33,7 +33,10 @@ if _ROOT not in sys.path:
 from dotenv import load_dotenv
 from flask import Flask, Response, request, send_file, session, redirect, url_for
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+from strategic_fit_engine import industry as industry_mod
+
+# override=True so a stale/placeholder ANTHROPIC_API_KEY in the shell can't shadow .env
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
@@ -106,7 +109,7 @@ def _add(session_id: str, msg_type: str, text: str, step: int = None) -> None:
 
 def _run_pipeline(company: str, sector: str, geography: str,
                   mode: str, session_id: str, size_range: str = "Any size",
-                  sale_type: str = "Full Sale (100%)") -> None:
+                  sale_type: str = "Full Sale (100%)", industry: str = "") -> None:
     """Runs all 4 steps sequentially in a background thread."""
     _env_path = Path(__file__).parent.parent / ".env"
     if _env_path.exists():
@@ -126,7 +129,11 @@ def _run_pipeline(company: str, sector: str, geography: str,
     old_stdout = sys.stdout
     sys.stdout = _Capture(session_id)
     try:
-        _add(session_id, "info", f"Pipeline starting ({mode}-side): {company} · {sector} · {geography}")
+        scope = industry_mod.label(industry, sector) or sector
+        _add(session_id, "info", f"Pipeline starting ({mode}-side): {company} · {scope} · {geography}")
+        if not industry_mod.is_any(industry):
+            _add(session_id, "log", f"   Industry scope: {industry} — criteria, valuation framing and "
+                                    f"buyer types will follow this industry's conventions")
 
         (BASE / "data").mkdir(exist_ok=True)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -135,13 +142,14 @@ def _run_pipeline(company: str, sector: str, geography: str,
         if is_sell:
             _add(session_id, "step", "Step 1 / 4 — Seller Profile & Acquirer Criteria", step=1)
             from strategic_fit_engine import step1_seller_dna
-            bp = step1_seller_dna.run(company, sector, size_range=size_range, sale_type=sale_type)
+            bp = step1_seller_dna.run(company, sector, size_range=size_range, sale_type=sale_type,
+                                      industry=industry)
             n_crit = len(bp.get("scoring_criteria", []))
             _add(session_id, "done", f"✓ Step 1 complete — {company} seller profile built, {n_crit} acquirer criteria derived")
         else:
             _add(session_id, "step", "Step 1 / 4 — Buyer Strategy, Dry Powder & Market Intelligence", step=1)
             from strategic_fit_engine import step1_buyer_dna
-            bp = step1_buyer_dna.run(company, sector, size_range=size_range)
+            bp = step1_buyer_dna.run(company, sector, size_range=size_range, industry=industry)
             n_bacq = len(bp.get("buyer_acquisitions", []))
             n_crit = len(bp.get("scoring_criteria", []))
             _add(session_id, "done", f"✓ Step 1 complete — {company} M&A thesis built, {n_bacq} prior acquisitions mapped, {n_crit} scoring criteria derived")
@@ -152,13 +160,15 @@ def _run_pipeline(company: str, sector: str, geography: str,
         if is_sell:
             _add(session_id, "step", "Step 2 / 4 — Potential Acquirer Longlist", step=2)
             from strategic_fit_engine import step2_acquirer_discovery
-            tr = step2_acquirer_discovery.run(sector, geography, buyer_profile=bp, size_range=size_range, sale_type=sale_type)
+            tr = step2_acquirer_discovery.run(sector, geography, buyer_profile=bp, size_range=size_range,
+                                              sale_type=sale_type, industry=industry)
             n_tgt = len(tr.get("targets", []))
             _add(session_id, "done", f"✓ Step 2 complete — {n_tgt} potential acquirers identified")
         else:
             _add(session_id, "step", "Step 2 / 4 — Buyer-Led Target Longlist", step=2)
             from strategic_fit_engine import step2_discovery
-            tr = step2_discovery.run(sector, geography, buyer_profile=bp, size_range=size_range)
+            tr = step2_discovery.run(sector, geography, buyer_profile=bp, size_range=size_range,
+                                     industry=industry)
             n_tgt = len(tr.get("targets", []))
             _add(session_id, "done", f"✓ Step 2 complete — {n_tgt} companies on longlist")
         for t in tr.get("targets", [])[:5]:
@@ -172,7 +182,8 @@ def _run_pipeline(company: str, sector: str, geography: str,
             who = "potential acquirers" if is_sell else "targets"
             prov = verification.active_provider()
             _add(session_id, "step", f"Verifying {who} against live data ({prov})", step=2)
-            tr["targets"] = verification.verify_targets(tr.get("targets", []), sector, geography)
+            tr["targets"] = verification.verify_targets(
+                tr.get("targets", []), industry_mod.label(industry, sector) or sector, geography)
             vc = verification.summarize(tr.get("targets", []))
             _add(session_id, "done",
                  f"✓ Verification complete — {vc['verified']} confirmed, "
@@ -192,6 +203,7 @@ def _run_pipeline(company: str, sector: str, geography: str,
         scored["sector"] = sector
         scored["geography"] = geography
         scored["mode"] = mode
+        scored["industry"] = industry
         if is_sell:
             scored["sale_type"] = sale_type
         with open(scored_path, "w", encoding="utf-8") as f:
@@ -214,7 +226,8 @@ def _run_pipeline(company: str, sector: str, geography: str,
         _add(session_id, "complete", "Analysis complete! Your report is ready.")
         _notify(
             f"Report complete -- {company}",
-            f"Mode: {mode}-side\nCompany: {company}\nSector: {sector}\nGeography: {geography}"
+            f"Mode: {mode}-side\nCompany: {company}\nIndustry: {industry}\n"
+            f"Sub-sector: {sector}\nGeography: {geography}"
         )
 
     except Exception as e:
@@ -226,7 +239,8 @@ def _run_pipeline(company: str, sector: str, geography: str,
                 _jobs[session_id]["error"] = str(e)
         _notify(
             f"Report failed -- {company}",
-            f"Mode: {mode}-side\nCompany: {company}\nSector: {sector}\nGeography: {geography}\nError: {e}"
+            f"Mode: {mode}-side\nCompany: {company}\nIndustry: {industry}\n"
+            f"Sub-sector: {sector}\nGeography: {geography}\nError: {e}"
         )
     finally:
         sys.stdout = old_stdout
@@ -258,6 +272,8 @@ def run_analysis():
     mode       = request.form.get("mode", "buy").strip()
     size_range = request.form.get("size_range", "Any size").strip() or "Any size"
     sale_type  = request.form.get("sale_type", "Full Sale (100%)").strip() or "Full Sale (100%)"
+    # Coerced against the taxonomy — an unknown value degrades to cross-sector, never errors.
+    industry   = industry_mod.normalize(request.form.get("industry", ""))
     if mode not in ("buy", "sell"):
         mode = "buy"
     if not company or not sector or not geography:
@@ -279,9 +295,10 @@ def run_analysis():
         _jobs[sid] = {"running": True, "messages": [], "current_step": 0, "done": False, "error": None}
 
     t = threading.Thread(target=_run_pipeline,
-                         args=(company, sector, geography, mode, sid, size_range, sale_type), daemon=True)
+                         args=(company, sector, geography, mode, sid, size_range, sale_type,
+                               industry), daemon=True)
     t.start()
-    return _progress_html(company, sector, geography, mode, size_range, sale_type)
+    return _progress_html(company, sector, geography, mode, size_range, sale_type, industry)
 
 
 @app.route("/stream")
@@ -513,116 +530,165 @@ def view_workflow():
 # Landing page HTML
 # ---------------------------------------------------------------------------
 
-LANDING_HTML = """<!DOCTYPE html>
+_LANDING_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Strategic Fit Engine</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
+    /* ══ Design tokens ══ */
+    :root{
+      --bg:#faf8f7;        /* page background        */
+      --panel:#ffffff;     /* card / sidebar surface */
+      --hover:#f7f1f0;     /* row hover / tint       */
+      --line:#ece1e0;      /* hairline divider       */
+      --border:#decece;    /* visible control border */
+      --accent:#7a1e32;    /* links, active, scores  */
+      --accent-strong:#5c1524;
+      --accent-soft:#9b4358;
+      --ink:#1c1417;
+      --ink-2:#362a2c;
+      --ink-3:#514042;
+      --ink-4:#6b5759;
+      --ink-5:#826c6e;
+      --ink-6:#ac9698;
+      --ok:#059669;
+      --radius:8px;        /* fields, buttons        */
+      --radius-lg:12px;    /* nav items, logo        */
+      --radius-xl:16px;    /* cards, panels          */
+      --shadow-card:0 1px 2px 0 rgb(50 15 22 / .04), 0 6px 20px -6px rgb(50 15 22 / .10);
+      --ease-out:cubic-bezier(.16,1,.3,1);
+      --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    }
+
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;
-      background:#fff;min-height:100vh;display:flex;flex-direction:column;color:#252850}
+    body{font-family:var(--sans);font-size:14px;line-height:1.5;
+      background:var(--bg);min-height:100vh;display:flex;flex-direction:column;color:var(--ink)}
 
     /* ── Header ── */
-    header{padding:0 56px;height:64px;display:flex;align-items:center;
-      justify-content:space-between;border-bottom:2px solid #252850}
-    .logo{font-size:15px;font-weight:700;color:#252850;letter-spacing:.02em}
-    .logo span{color:#CC0605}
-    .header-right{font-size:11px;color:#888;letter-spacing:.04em;text-transform:uppercase}
+    header{padding:0 32px;height:64px;display:flex;align-items:center;
+      justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--line)}
+    .brand{display:flex;align-items:center;gap:12px}
+    .mark{width:34px;height:34px;border-radius:var(--radius-lg);background:var(--accent-strong);
+      color:#F3ECE1;font-family:Georgia,"Times New Roman",serif;font-size:15px;font-weight:700;
+      display:flex;align-items:center;justify-content:center;letter-spacing:-.02em;flex:none}
+    .brand-name{font-size:14px;font-weight:600;color:var(--ink);line-height:1.25}
+    .brand-sub{display:block;font-size:13px;font-weight:400;color:var(--ink-5)}
+    .header-right{font-size:13px;color:var(--ink-5)}
+    .header-right a{color:var(--accent);text-decoration:none;font-weight:500;
+      transition:color .15s}
+    .header-right a:hover{color:var(--accent-strong)}
 
     /* ── Layout ── */
-    main{flex:1;display:flex}
-    .left-panel{width:340px;min-width:340px;background:#252850;padding:56px 48px;
-      display:flex;flex-direction:column}
-    .right-panel{flex:1;padding:56px 64px;overflow-y:auto}
+    main{flex:1;display:flex;animation:page-fade-in .45s var(--ease-out) both}
+    .left-panel{width:300px;min-width:300px;background:var(--panel);
+      border-right:1px solid var(--line);padding:24px 20px;display:flex;flex-direction:column}
+    .right-panel{flex:1;padding:32px;overflow-y:auto}
+
+    /* ── Section labels ── */
+    .section-label,.page-label,.presets-label,.log-label{font-size:13px;font-weight:600;
+      letter-spacing:.05em;text-transform:uppercase;color:var(--ink-5);
+      display:flex;align-items:center;gap:8px;margin-bottom:14px}
+    .section-label::before,.page-label::before{content:'';display:inline-block;
+      width:6px;height:6px;border-radius:999px;background:var(--accent);flex:none}
 
     /* ── Left panel ── */
-    .section-label{font-size:10px;font-weight:700;letter-spacing:.12em;
-      text-transform:uppercase;color:#CC0605;margin-bottom:18px;
-      display:flex;align-items:center;gap:8px}
-    .section-label::before{content:'';display:inline-block;width:10px;height:10px;background:#CC0605}
-    .panel-title{font-size:26px;font-weight:700;color:#fff;line-height:1.25;margin-bottom:20px}
-    .panel-desc{font-size:13px;color:rgba(255,255,255,.55);line-height:1.7;margin-bottom:40px}
+    .panel-title{font-size:20px;font-weight:700;color:var(--ink);line-height:1.3;margin-bottom:10px}
+    .panel-desc{font-size:14px;color:var(--ink-4);line-height:1.6;margin-bottom:28px}
 
-    .pipeline{display:flex;flex-direction:column;gap:0}
-    .pipe-step{display:flex;align-items:flex-start;gap:16px;padding:16px 0;
-      border-top:1px solid rgba(255,255,255,.1)}
-    .pipe-step:last-child{border-bottom:1px solid rgba(255,255,255,.1)}
-    .pipe-num{font-size:10px;font-weight:700;color:#CC0605;letter-spacing:.08em;
-      text-transform:uppercase;min-width:28px;padding-top:2px}
-    .pipe-name{font-size:13px;font-weight:600;color:#fff;margin-bottom:2px}
-    .pipe-sub{font-size:11px;color:rgba(255,255,255,.4)}
+    .pipeline{display:flex;flex-direction:column;gap:2px}
+    .pipe-step{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;
+      border-radius:var(--radius-lg);transition:background .15s}
+    .pipe-step:hover{background:var(--hover)}
+    .pipe-num{font-size:13px;font-weight:600;color:var(--accent);min-width:24px;padding-top:1px}
+    .pipe-name{font-size:14px;font-weight:500;color:var(--ink-2);margin-bottom:1px}
+    .pipe-sub{font-size:13px;color:var(--ink-5);line-height:1.4}
 
-    .panel-footer{margin-top:auto;padding-top:40px}
-    .panel-footer a{font-size:12px;color:rgba(255,255,255,.35);text-decoration:none;
-      transition:color .2s}
-    .panel-footer a:hover{color:#CC0605}
+    .panel-footer{margin-top:auto;padding-top:28px}
+    .panel-footer a{font-size:13px;color:var(--accent);text-decoration:none;font-weight:500;
+      transition:color .15s}
+    .panel-footer a:hover{color:var(--accent-strong)}
 
     /* ── Right panel ── */
-    .page-label{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
-      color:#CC0605;display:flex;align-items:center;gap:8px;margin-bottom:16px}
-    .page-label::before{content:'';display:inline-block;width:10px;height:10px;background:#CC0605}
-    h1{font-size:32px;font-weight:700;color:#252850;line-height:1.2;margin-bottom:10px}
-    .subtitle{font-size:14px;color:#666;line-height:1.65;margin-bottom:40px;max-width:560px}
+    .content{max-width:none;width:100%}
+    h1{font-size:24px;font-weight:700;color:var(--ink);line-height:1.25;margin-bottom:8px}
+    .subtitle{font-size:14px;color:var(--ink-4);line-height:1.6;margin-bottom:24px;max-width:760px}
+
+    /* ── Card ── */
+    .surface-card{background:var(--panel);border:1px solid var(--line);
+      border-radius:var(--radius-xl);box-shadow:var(--shadow-card);padding:20px}
 
     /* ── Presets ── */
-    .presets-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-      color:#888;margin-bottom:12px}
-    .presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:36px}
-    .preset-btn{background:#fff;border:1px solid #d0d5e8;color:#252850;
-      font-size:12px;font-weight:600;padding:7px 14px;cursor:pointer;
-      font-family:inherit;transition:all .15s;letter-spacing:.01em}
-    .preset-btn:hover{background:#252850;color:#fff;border-color:#252850}
+    .presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px}
+    .preset-btn{background:var(--panel);border:1px solid var(--border);color:var(--ink-3);
+      font-size:13px;font-weight:500;padding:7px 14px;border-radius:999px;cursor:pointer;
+      font-family:inherit;transition:color .15s,border-color .15s,background .15s}
+    .preset-btn:hover{background:var(--hover);border-color:var(--accent-soft);color:var(--accent)}
 
     /* ── Form ── */
-    .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px}
+    /* Columns are added as the viewport allows, so the form fills wide screens. */
+    .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+      gap:20px;margin-bottom:20px}
     .field{display:flex;flex-direction:column}
     .field.full{grid-column:1/-1}
-    label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-      color:#252850;margin-bottom:8px}
-    input{border:1px solid #d0d5e8;padding:12px 14px;font-size:14px;color:#252850;
-      font-family:inherit;outline:none;transition:border .15s;background:#fff}
-    input::placeholder{color:#aaa}
-    input:focus{border-color:#252850}
-    select{border:1px solid #d0d5e8;padding:12px 14px;font-size:14px;color:#252850;
-      font-family:inherit;outline:none;transition:border .15s;background:#fff;
-      appearance:none;-webkit-appearance:none;cursor:pointer;
-      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23252850' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-      background-repeat:no-repeat;background-position:right 14px center}
-    select:focus{border-color:#252850}
-    .hint{font-size:11px;color:#999;margin-top:5px;line-height:1.4}
+    label{font-size:13px;font-weight:600;letter-spacing:.03em;color:var(--ink-3);margin-bottom:6px}
+    input,select{width:100%;border:1px solid var(--border);border-radius:var(--radius);
+      padding:10px 12px;font-size:14px;color:var(--ink);font-family:inherit;background:var(--bg);
+      outline:none;transition:border-color .15s,box-shadow .15s}
+    input::placeholder{color:var(--ink-5)}
+    input:focus,select:focus{border-color:var(--accent-strong);
+      box-shadow:0 0 0 2px rgb(122 30 50 / .15)}
+    select{appearance:none;-webkit-appearance:none;cursor:pointer;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23826c6e' stroke-width='1.75' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat:no-repeat;background-position:right 12px center}
+    .hint{font-size:13px;color:var(--ink-5);margin-top:5px;line-height:1.45}
 
     /* ── Submit ── */
-    .submit-row{display:flex;align-items:center;gap:20px;margin-top:8px}
-    .submit-btn{background:#CC0605;color:#fff;border:none;padding:14px 36px;
-      font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;
-      letter-spacing:.04em;text-transform:uppercase;transition:background .15s}
-    .submit-btn:hover{background:#a80504}
-    .submit-btn:disabled{background:#ccc;cursor:not-allowed}
+    .submit-row{display:flex;align-items:center;gap:16px;margin-top:4px}
+    .submit-btn{background:var(--accent-strong);color:#fff;border:none;
+      padding:10px 20px;border-radius:var(--radius);font-size:14px;font-weight:600;
+      font-family:inherit;cursor:pointer;transition:background .15s;
+      box-shadow:0 1px 2px 0 rgb(50 15 22 / .10)}
+    .submit-btn:hover{background:var(--accent)}
+    .submit-btn:disabled{opacity:.4;cursor:not-allowed}
 
-    /* ── Mode tabs ── */
-    .mode-tabs{display:flex;gap:0;margin-bottom:28px;border:1px solid #d0d5e8}
-    .mode-tab{flex:1;padding:11px 0;font-size:12px;font-weight:700;font-family:inherit;
-      letter-spacing:.04em;text-transform:uppercase;cursor:pointer;border:none;
-      background:#fff;color:#888;transition:all .15s;text-align:center}
-    .mode-tab.active{background:#252850;color:#fff}
-    .mode-tab:first-child{border-right:1px solid #d0d5e8}
+    /* ── Mode toggle ── */
+    .mode-tabs{display:inline-flex;gap:4px;padding:4px;margin-bottom:24px;
+      background:var(--hover);border:1px solid var(--line);border-radius:999px}
+    .mode-tab{padding:8px 18px;font-size:13px;font-weight:600;font-family:inherit;
+      cursor:pointer;border:none;border-radius:999px;background:transparent;color:var(--ink-5);
+      transition:background .15s,color .15s;white-space:nowrap}
+    .mode-tab:hover{color:var(--ink-3)}
+    .mode-tab.active{background:rgb(122 30 50 / .10);color:var(--accent)}
 
     /* ── Footer ── */
-    footer{padding:18px 56px;border-top:1px solid #e8eaf0;
+    footer{padding:16px 32px;background:var(--panel);border-top:1px solid var(--line);
       display:flex;justify-content:space-between;align-items:center}
-    .footer-brand{font-size:13px;font-weight:700;color:#252850}
-    .footer-brand span{color:#CC0605}
-    .footer-right{font-size:11px;color:#aaa}
+    .footer-brand{font-size:13px;font-weight:600;color:var(--ink-3)}
+    .footer-right{font-size:13px;color:var(--ink-6)}
+
+    /* ── Motion ── */
+    @keyframes page-fade-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+    @media (max-width:900px){
+      main{flex-direction:column}
+      .left-panel{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--line)}
+      .form-grid{grid-template-columns:1fr}
+      .right-panel{padding:24px 20px}
+    }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">Strategic Fit Engine &nbsp;<span>·</span>&nbsp; M&amp;A Intelligence</div>
+  <div class="brand">
+    <div class="mark">SF</div>
+    <div>
+      <div class="brand-name">Strategic Fit Engine</div>
+      <span class="brand-sub">M&amp;A Intelligence</span>
+    </div>
+  </div>
   <div class="header-right">Confidential · Not for distribution</div>
 </header>
 
@@ -668,21 +734,22 @@ LANDING_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="panel-footer">
-      <a href="/report" target="_blank">↗ View last report</a>
+      <a href="/report" target="_blank">View last report →</a>
     </div>
   </div>
 
   <!-- Right panel -->
   <div class="right-panel">
+   <div class="content">
     <div class="page-label">New Analysis</div>
 
     <!-- Mode tabs -->
     <div class="mode-tabs">
       <button class="mode-tab active" id="tab-buy" onclick="switchMode('buy')">
-        Buy-Side Advisory &nbsp;·&nbsp; Find Targets
+        Buy-Side · Find Targets
       </button>
       <button class="mode-tab" id="tab-sell" onclick="switchMode('sell')">
-        Sell-Side Advisory &nbsp;·&nbsp; Find Acquirers
+        Sell-Side · Find Acquirers
       </button>
     </div>
 
@@ -707,9 +774,16 @@ LANDING_HTML = """<!DOCTYPE html>
       <button class="preset-btn" onclick="preset('Wayflyer','FinTech SaaS','UK/Ireland/Europe')">Wayflyer · FinTech exit</button>
     </div>
 
-    <form method="POST" action="/run" id="analysis-form" onsubmit="handleSubmit(event)">
+    <form method="POST" action="/run" id="analysis-form" onsubmit="handleSubmit(event)" class="surface-card">
       <input type="hidden" name="mode" id="mode-input" value="buy">
       <div class="form-grid">
+        <div class="field full">
+          <label id="industry-label">Industry</label>
+          <select name="industry" id="industry" onchange="onIndustryChange()">
+__INDUSTRY_OPTIONS__
+          </select>
+          <p class="hint" id="industry-hint">Sets the lens for the whole screen — valuation metrics, buyer archetypes and diligence focus all follow the chosen industry. Name the specific sub-sector below.</p>
+        </div>
         <div class="field">
           <label id="company-label">Strategic Buyer</label>
           <input type="text" name="company" id="company"
@@ -717,11 +791,11 @@ LANDING_HTML = """<!DOCTYPE html>
           <p class="hint" id="company-hint">The acquiring company. Scoring criteria will be derived from their competitive gaps.</p>
         </div>
         <div class="field">
-          <label id="sector-label">Target Sector</label>
+          <label id="sector-label">Target Sub-Sector</label>
           <input type="text" name="sector" id="sector"
-            placeholder="e.g. Healthcare Vertical SaaS, EdTech, FinTech payments"
+            placeholder="e.g. Vertical SaaS for healthcare"
             value="" required>
-          <p class="hint" id="sector-hint">Be specific — vertical SaaS, FinTech payments, HR Tech, etc.</p>
+          <p class="hint" id="sector-hint">The specific sub-sector within the chosen industry. Be narrow — this is what gets screened.</p>
         </div>
         <div class="field">
           <label id="size-label">Size Range</label>
@@ -756,16 +830,30 @@ LANDING_HTML = """<!DOCTYPE html>
         <button type="submit" class="submit-btn" id="submit-btn">Run Analysis →</button>
       </div>
     </form>
+   </div>
   </div>
 </main>
 
 <footer>
-  <div class="footer-brand">Strategic Fit Engine <span>·</span> M&amp;A Intelligence</div>
+  <div class="footer-brand">Strategic Fit Engine · M&amp;A Intelligence</div>
   <div class="footer-right">AI-powered screening · Not for distribution</div>
 </footer>
 
 <script>
 var _currentMode = 'buy';
+
+// Sub-sector examples per industry, generated from industry.py so the UI and the
+// pipeline's taxonomy can never drift apart.
+var _sectorExamples = __INDUSTRY_EXAMPLES__;
+
+function onIndustryChange() {
+  var ind = document.getElementById('industry').value;
+  var ex  = _sectorExamples[ind];
+  var sectorEl = document.getElementById('sector');
+  sectorEl.placeholder = ex && ex.length
+    ? 'e.g. ' + ex.join(', ')
+    : 'e.g. Vertical SaaS for healthcare';
+}
 
 var _copy = {
   buy: {
@@ -774,8 +862,8 @@ var _copy = {
     companyLabel: 'Strategic Buyer',
     companyHint: 'The acquiring company. Scoring criteria will be derived from their competitive gaps.',
     companyPlaceholder: 'e.g. Salesforce, Duolingo, Stripe',
-    sectorLabel: 'Target Sector',
-    sectorHint: 'Be specific — vertical SaaS, FinTech payments, HR Tech, etc.',
+    sectorLabel: 'Target Sub-Sector',
+    sectorHint: 'The specific sub-sector within the chosen industry. Be narrow — this is what gets screened.',
     sizeLabel: 'Target Size Range',
     sizeHint: 'Filter targets by ARR. Narrows the longlist to realistic deal candidates.',
     geoLabel: 'Geography / Region',
@@ -793,8 +881,8 @@ var _copy = {
     companyLabel: 'Seller Company',
     companyHint: 'The company seeking an exit. The engine will profile its appeal and identify ideal acquirers.',
     companyPlaceholder: 'e.g. Attensi, Leapsome, Wayflyer',
-    sectorLabel: 'Sector',
-    sectorHint: 'The seller sector — used to find relevant strategic and PE acquirers.',
+    sectorLabel: 'Seller Sub-Sector',
+    sectorHint: 'The seller\'s specific sub-sector within the chosen industry — used to find relevant acquirers.',
     sizeLabel: 'Seller ARR Range',
     sizeHint: 'Approximate seller ARR — used to match acquirer financial capacity.',
     geoLabel: 'Acquirer Geography',
@@ -853,12 +941,29 @@ function handleSubmit(e) {
 </html>"""
 
 
+def _industry_options_html() -> str:
+    """<option> list for the industry dropdown, built from the taxonomy."""
+    return "\n".join(
+        f'            <option value="{_h(label)}">{_h(label)}</option>'
+        for label in industry_mod.ORDER
+    )
+
+
+# The dropdown and its sub-sector examples are injected once at import time.
+LANDING_HTML = (
+    _LANDING_TEMPLATE
+    .replace("__INDUSTRY_OPTIONS__", _industry_options_html())
+    .replace("__INDUSTRY_EXAMPLES__", json.dumps(industry_mod.sector_examples()))
+)
+
+
 # ---------------------------------------------------------------------------
 # Progress page HTML (returned after form submit)
 # ---------------------------------------------------------------------------
 
 def _progress_html(company: str, sector: str, geography: str, mode: str = "buy",
-                   size_range: str = "Any size", sale_type: str = "Full Sale (100%)") -> str:
+                   size_range: str = "Any size", sale_type: str = "Full Sale (100%)",
+                   industry: str = "") -> str:
     is_sell = (mode == "sell")
     param_label = "Seller"            if is_sell else "Buyer"
     s1_name     = "Seller Profile"    if is_sell else "Buyer Intelligence"
@@ -875,135 +980,184 @@ def _progress_html(company: str, sector: str, geography: str, mode: str = "buy",
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Running Analysis — Strategic Fit Engine</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
+    /* ══ Design tokens ══ */
+    :root{{
+      --bg:#faf8f7;
+      --panel:#ffffff;
+      --hover:#f7f1f0;
+      --line:#ece1e0;
+      --border:#decece;
+      --accent:#7a1e32;
+      --accent-strong:#5c1524;
+      --accent-soft:#9b4358;
+      --ink:#1c1417;
+      --ink-2:#362a2c;
+      --ink-3:#514042;
+      --ink-4:#6b5759;
+      --ink-5:#826c6e;
+      --ink-6:#ac9698;
+      --ok:#059669;
+      --err:#dc2626;
+      --radius:8px;
+      --radius-lg:12px;
+      --radius-xl:16px;
+      --shadow-card:0 1px 2px 0 rgb(50 15 22 / .04), 0 6px 20px -6px rgb(50 15 22 / .10);
+      --ease-out:cubic-bezier(.16,1,.3,1);
+      --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+      --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    }}
+
     *{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif;
-      background:#fff;min-height:100vh;display:flex;flex-direction:column;color:#252850}}
+    body{{font-family:var(--sans);font-size:14px;line-height:1.5;
+      background:var(--bg);min-height:100vh;display:flex;flex-direction:column;color:var(--ink)}}
 
     /* ── Header ── */
-    header{{padding:0 56px;height:64px;display:flex;align-items:center;
-      justify-content:space-between;border-bottom:2px solid #252850}}
-    .logo{{font-size:15px;font-weight:700;color:#252850;letter-spacing:.02em}}
-    .logo span{{color:#CC0605}}
-    .header-right{{font-size:11px;color:#888;letter-spacing:.04em;text-transform:uppercase}}
-    .header-right a{{color:#252850;text-decoration:none;font-weight:600;
-      font-size:12px;letter-spacing:.04em}}
-    .header-right a:hover{{color:#CC0605}}
+    header{{padding:0 32px;height:64px;display:flex;align-items:center;
+      justify-content:space-between;background:var(--panel);border-bottom:1px solid var(--line)}}
+    .brand{{display:flex;align-items:center;gap:12px}}
+    .mark{{width:34px;height:34px;border-radius:var(--radius-lg);background:var(--accent-strong);
+      color:#F3ECE1;font-family:Georgia,"Times New Roman",serif;font-size:15px;font-weight:700;
+      display:flex;align-items:center;justify-content:center;letter-spacing:-.02em;flex:none;
+      animation:brand-pulse 2.4s ease-in-out infinite}}
+    .brand-name{{font-size:14px;font-weight:600;color:var(--ink);line-height:1.25}}
+    .brand-sub{{display:block;font-size:13px;font-weight:400;color:var(--ink-5)}}
+    .header-right a{{font-size:13px;color:var(--accent);text-decoration:none;font-weight:500;
+      transition:color .15s}}
+    .header-right a:hover{{color:var(--accent-strong)}}
 
     /* ── Layout ── */
-    main{{flex:1;display:flex}}
-    .left-panel{{width:340px;min-width:340px;background:#252850;padding:56px 48px;
-      display:flex;flex-direction:column}}
-    .right-panel{{flex:1;padding:56px 64px;overflow-y:auto}}
+    main{{flex:1;display:flex;animation:page-fade-in .45s var(--ease-out) both}}
+    .left-panel{{width:300px;min-width:300px;background:var(--panel);
+      border-right:1px solid var(--line);padding:24px 20px;display:flex;flex-direction:column}}
+    .right-panel{{flex:1;padding:32px;overflow-y:auto}}
+    .content{{max-width:none;width:100%}}
+
+    /* ── Section labels ── */
+    .section-label,.page-label,.log-label{{font-size:13px;font-weight:600;letter-spacing:.05em;
+      text-transform:uppercase;color:var(--ink-5);display:flex;align-items:center;gap:8px;
+      margin-bottom:14px}}
+    .section-label::before,.page-label::before{{content:'';display:inline-block;
+      width:6px;height:6px;border-radius:999px;background:var(--accent);flex:none}}
 
     /* ── Left panel ── */
-    .section-label{{font-size:10px;font-weight:700;letter-spacing:.12em;
-      text-transform:uppercase;color:#CC0605;margin-bottom:18px;
-      display:flex;align-items:center;gap:8px}}
-    .section-label::before{{content:'';display:inline-block;width:10px;height:10px;background:#CC0605}}
-    .panel-title{{font-size:26px;font-weight:700;color:#fff;line-height:1.25;margin-bottom:16px}}
-    .params-block{{margin-bottom:36px}}
-    .param-row{{display:flex;flex-direction:column;margin-bottom:14px}}
-    .param-key{{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-      color:rgba(255,255,255,.35);margin-bottom:3px}}
-    .param-val{{font-size:13px;font-weight:600;color:#fff}}
+    .panel-title{{font-size:20px;font-weight:700;color:var(--ink);line-height:1.3;margin-bottom:20px}}
+    .params-block{{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--line)}}
+    .param-row{{display:flex;flex-direction:column;margin-bottom:12px}}
+    .param-row:last-child{{margin-bottom:0}}
+    .param-key{{font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+      color:var(--ink-5);margin-bottom:2px}}
+    .param-val{{font-size:14px;font-weight:600;color:var(--ink)}}
 
-    .pipeline{{display:flex;flex-direction:column;gap:0}}
-    .pipe-step{{display:flex;align-items:flex-start;gap:16px;padding:14px 0;
-      border-top:1px solid rgba(255,255,255,.1)}}
-    .pipe-step:last-child{{border-bottom:1px solid rgba(255,255,255,.1)}}
-    .pipe-num{{font-size:10px;font-weight:700;color:rgba(255,255,255,.3);letter-spacing:.08em;
-      text-transform:uppercase;min-width:28px;padding-top:2px;transition:color .3s}}
-    .pipe-step.active .pipe-num{{color:#CC0605}}
-    .pipe-step.complete .pipe-num{{color:#4CAF50}}
-    .pipe-name{{font-size:13px;font-weight:600;color:rgba(255,255,255,.4);margin-bottom:2px;transition:color .3s}}
-    .pipe-step.active .pipe-name{{color:#fff}}
-    .pipe-step.complete .pipe-name{{color:rgba(255,255,255,.7)}}
-    .pipe-sub{{font-size:11px;color:rgba(255,255,255,.25)}}
-    .pipe-icon{{margin-left:auto;font-size:14px;color:rgba(255,255,255,.2);transition:color .3s}}
-    .pipe-step.active .pipe-icon{{color:#CC0605}}
-    .pipe-step.complete .pipe-icon{{color:#4CAF50}}
+    .pipeline{{display:flex;flex-direction:column;gap:2px}}
+    .pipe-step{{display:flex;align-items:flex-start;gap:12px;padding:10px 12px;
+      border-radius:var(--radius-lg);transition:background .15s,color .15s}}
+    .pipe-num{{font-size:13px;font-weight:600;color:var(--ink-6);min-width:24px;padding-top:1px;
+      transition:color .15s}}
+    .pipe-name{{font-size:14px;font-weight:500;color:var(--ink-5);margin-bottom:1px;
+      transition:color .15s}}
+    .pipe-sub{{font-size:13px;color:var(--ink-6);line-height:1.4}}
+    .pipe-icon{{margin-left:auto;font-size:13px;color:var(--ink-6);transition:color .15s}}
+
+    .pipe-step.active{{background:rgb(122 30 50 / .10)}}
+    .pipe-step.active .pipe-num,
+    .pipe-step.active .pipe-name,
+    .pipe-step.active .pipe-icon{{color:var(--accent)}}
+    .pipe-step.active .pipe-name{{font-weight:600}}
+    .pipe-step.complete .pipe-name{{color:var(--ink-3)}}
+    .pipe-step.complete .pipe-num,
+    .pipe-step.complete .pipe-icon{{color:var(--ok)}}
 
     /* ── Right panel ── */
-    .page-label{{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
-      color:#CC0605;display:flex;align-items:center;gap:8px;margin-bottom:16px}}
-    .page-label::before{{content:'';display:inline-block;width:10px;height:10px;background:#CC0605}}
-    h2{{font-size:28px;font-weight:700;color:#252850;line-height:1.2;margin-bottom:8px}}
-    .running-sub{{font-size:13px;color:#888;margin-bottom:36px}}
+    h2{{font-size:24px;font-weight:700;color:var(--ink);line-height:1.25;margin-bottom:6px;
+      display:flex;align-items:center;gap:10px}}
+    .running-sub{{font-size:14px;color:var(--ink-4);margin-bottom:28px}}
 
-    /* ── Progress bar ── */
-    .progress-wrap{{margin-bottom:36px}}
-    .progress-meta{{display:flex;justify-content:space-between;margin-bottom:8px}}
-    .progress-label{{font-size:11px;font-weight:700;letter-spacing:.08em;
-      text-transform:uppercase;color:#888}}
-    .progress-pct{{font-size:11px;font-weight:700;color:#252850}}
-    .progress-track{{background:#f0f2f7;height:4px;overflow:hidden}}
-    .progress-fill{{height:4px;background:#CC0605;width:0%;transition:width .6s ease}}
+    /* ── Progress ── */
+    .progress-wrap{{margin-bottom:28px}}
+    .progress-meta{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}}
+    .progress-label{{font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+      color:var(--ink-5)}}
+    .progress-pct{{font-size:13px;font-weight:700;color:var(--accent)}}
+    .progress-track{{background:var(--line);height:6px;border-radius:999px;overflow:hidden}}
+    .progress-fill{{height:6px;border-radius:999px;background:var(--accent);width:0%;
+      transition:width .6s var(--ease-out)}}
 
     /* ── Log ── */
-    .log-label{{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-      color:#888;margin-bottom:10px}}
-    .log{{background:#f7f8fc;border:1px solid #e8eaf0;padding:20px;
-      height:300px;overflow-y:auto;font-family:'IBM Plex Mono','Courier New',monospace;
-      font-size:12px;line-height:1.8}}
-    .log .msg-log{{color:#666}}
-    .log .msg-info{{color:#444}}
-    .log .msg-step{{color:#252850;font-weight:700}}
-    .log .msg-done{{color:#2E7D32;font-weight:600}}
-    .log .msg-error{{color:#CC0605}}
-    .log .msg-complete{{color:#252850;font-weight:700;font-size:13px}}
+    .log{{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius-xl);
+      box-shadow:var(--shadow-card);padding:20px;height:300px;overflow-y:auto;
+      font-family:var(--mono);font-size:13px;line-height:1.7}}
+    .log .msg-log{{color:var(--ink-5)}}
+    .log .msg-info{{color:var(--ink-3)}}
+    .log .msg-step{{color:var(--ink);font-weight:600}}
+    .log .msg-done{{color:var(--ok);font-weight:500}}
+    .log .msg-error{{color:var(--err)}}
+    .log .msg-complete{{color:var(--accent);font-weight:700}}
 
-    /* ── Result ── */
-    .result-box{{margin-top:28px;padding:28px 32px;border-left:4px solid #2E7D32;
-      background:#f4faf4;display:none}}
-    .result-box.show{{display:block}}
-    .result-title{{font-size:16px;font-weight:700;color:#252850;margin-bottom:4px}}
-    .result-sub{{font-size:13px;color:#666;margin-bottom:20px}}
-    .open-btn{{display:inline-block;padding:13px 32px;background:#CC0605;color:#fff;
-      font-size:13px;font-weight:700;font-family:inherit;text-decoration:none;
-      letter-spacing:.04em;text-transform:uppercase;transition:background .15s;
-      margin-right:12px}}
-    .open-btn:hover{{background:#a80504}}
-    .new-btn{{display:inline-block;padding:13px 24px;background:#fff;color:#252850;
-      font-size:13px;font-weight:600;font-family:inherit;text-decoration:none;
-      border:1px solid #d0d5e8;transition:all .15s}}
-    .new-btn:hover{{background:#252850;color:#fff;border-color:#252850}}
+    /* ── Status chip ── */
+    .chip{{display:inline-block;border-radius:999px;padding:2px 8px;font-size:10px;
+      font-weight:500;letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}}
+    .chip-ok{{background:#dcfce7;color:#15803d}}
+    .chip-err{{background:#fee2e2;color:#b91c1c}}
 
-    /* ── Error ── */
-    .error-box{{margin-top:28px;padding:24px 28px;border-left:4px solid #CC0605;
-      background:#fff5f5;display:none}}
-    .error-box.show{{display:block}}
-    .error-title{{font-size:15px;font-weight:700;color:#CC0605;margin-bottom:8px}}
-    .error-msg{{font-size:13px;color:#444;margin-bottom:16px;font-family:'IBM Plex Mono','Courier New',monospace}}
-    .retry-link{{font-size:13px;color:#252850;text-decoration:none;font-weight:600;
-      border-bottom:1px solid #252850}}
-    .retry-link:hover{{color:#CC0605;border-color:#CC0605}}
+    /* ── Result / error cards ── */
+    .result-box,.error-box{{margin-top:24px;padding:20px;background:var(--panel);
+      border:1px solid var(--line);border-radius:var(--radius-xl);box-shadow:var(--shadow-card);
+      display:none;animation:page-fade-in .45s var(--ease-out) both}}
+    .result-box.show,.error-box.show{{display:block}}
+    .result-title{{font-size:16px;font-weight:600;color:var(--ink);margin-bottom:4px}}
+    .result-sub{{font-size:14px;color:var(--ink-4);margin-bottom:18px}}
+    .open-btn{{display:inline-block;padding:10px 20px;border-radius:var(--radius);
+      background:var(--accent-strong);color:#fff;font-size:14px;font-weight:600;
+      font-family:inherit;text-decoration:none;transition:background .15s;margin-right:10px;
+      box-shadow:0 1px 2px 0 rgb(50 15 22 / .10)}}
+    .open-btn:hover{{background:var(--accent)}}
+    .new-btn{{display:inline-block;padding:10px 18px;border-radius:var(--radius);
+      background:var(--panel);color:var(--ink-3);font-size:14px;font-weight:600;
+      font-family:inherit;text-decoration:none;border:1px solid var(--border);
+      transition:color .15s,border-color .15s}}
+    .new-btn:hover{{border-color:var(--accent-soft);color:var(--accent)}}
+    .error-title{{font-size:16px;font-weight:600;color:var(--err);margin-bottom:8px}}
+    .error-msg{{font-size:13px;color:var(--ink-3);margin-bottom:16px;font-family:var(--mono);
+      background:var(--bg);border:1px solid var(--line);border-radius:var(--radius);padding:12px;
+      white-space:pre-wrap}}
+    .retry-link{{font-size:14px;color:var(--accent);text-decoration:none;font-weight:600;
+      transition:color .15s}}
+    .retry-link:hover{{color:var(--accent-strong)}}
 
-    /* ── Spinner ── */
+    /* ── Motion ── */
     @keyframes spin{{to{{transform:rotate(360deg)}}}}
-    .spinner{{display:inline-block;width:14px;height:14px;
-      border:2px solid rgba(204,6,5,.2);border-top-color:#CC0605;
-      border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;
-      margin-right:8px}}
-    @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.4}}}}
-    .pulsing{{animation:pulse 1.8s ease-in-out infinite}}
+    .spinner{{display:inline-block;width:16px;height:16px;flex:none;
+      border:2px solid rgb(122 30 50 / .2);border-top-color:var(--accent);
+      border-radius:50%;animation:spin .9s linear infinite}}
+    @keyframes brand-pulse{{0%,100%{{transform:scale(1);opacity:.92}}50%{{transform:scale(1.045);opacity:1}}}}
+    @keyframes page-fade-in{{from{{opacity:0;transform:translateY(5px)}}to{{opacity:1;transform:none}}}}
 
     /* ── Footer ── */
-    footer{{padding:18px 56px;border-top:1px solid #e8eaf0;
+    footer{{padding:16px 32px;background:var(--panel);border-top:1px solid var(--line);
       display:flex;justify-content:space-between;align-items:center}}
-    .footer-brand{{font-size:13px;font-weight:700;color:#252850}}
-    .footer-brand span{{color:#CC0605}}
-    .footer-right{{font-size:11px;color:#aaa}}
+    .footer-brand{{font-size:13px;font-weight:600;color:var(--ink-3)}}
+    .footer-right{{font-size:13px;color:var(--ink-6)}}
+
+    @media (max-width:900px){{
+      main{{flex-direction:column}}
+      .left-panel{{width:100%;min-width:0;border-right:none;border-bottom:1px solid var(--line)}}
+      .right-panel{{padding:24px 20px}}
+    }}
   </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">Strategic Fit Engine &nbsp;<span>·</span>&nbsp; M&amp;A Intelligence</div>
-  <div class="header-right" style="display:flex;align-items:center;gap:12px">
-    <a href="/" style="font-size:12px;color:#888;letter-spacing:.04em;text-decoration:none;font-weight:600">← New Analysis</a>
+  <div class="brand">
+    <div class="mark">SF</div>
+    <div>
+      <div class="brand-name">Strategic Fit Engine</div>
+      <span class="brand-sub">M&amp;A Intelligence</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <a href="/">← New Analysis</a>
   </div>
 </header>
 
@@ -1011,15 +1165,19 @@ def _progress_html(company: str, sector: str, geography: str, mode: str = "buy",
   <!-- Left panel -->
   <div class="left-panel">
     <div class="section-label">Pipeline</div>
-    <div class="panel-title">Analysis<br>In Progress</div>
+    <div class="panel-title">Analysis in progress</div>
 
     <div class="params-block">
       <div class="param-row">
         <div class="param-key">{param_label}</div>
         <div class="param-val">{_h(company)}</div>
       </div>
+      {f'''<div class="param-row">
+        <div class="param-key">Industry</div>
+        <div class="param-val">{_h(industry)}</div>
+      </div>''' if not industry_mod.is_any(industry) else ''}
       <div class="param-row">
-        <div class="param-key">Sector</div>
+        <div class="param-key">Sub-Sector</div>
         <div class="param-val">{_h(sector)}</div>
       </div>
       <div class="param-row">
@@ -1074,9 +1232,10 @@ def _progress_html(company: str, sector: str, geography: str, mode: str = "buy",
 
   <!-- Right panel -->
   <div class="right-panel">
+   <div class="content">
     <div class="page-label">Live Analysis</div>
-    <h2><span class="spinner pulsing"></span>Running Pipeline</h2>
-    <div class="running-sub">This typically takes <strong>5-10 minutes</strong>. Do not close this tab.</div>
+    <h2><span class="spinner"></span>Running Pipeline</h2>
+    <div class="running-sub">This typically takes <strong>5–10 minutes</strong>. Do not close this tab.</div>
 
     <div class="progress-wrap">
       <div class="progress-meta">
@@ -1092,22 +1251,25 @@ def _progress_html(company: str, sector: str, geography: str, mode: str = "buy",
     <div class="log" id="log"></div>
 
     <div class="result-box" id="result-box">
-      <div class="result-title">✓ Analysis Complete</div>
+      <div class="chip chip-ok">Complete</div>
+      <div class="result-title">Analysis complete</div>
       <div class="result-sub">Your report is ready. It will open automatically in a new tab.</div>
       <a href="/report" target="_blank" class="open-btn">Open Report →</a>
       <a href="/" class="new-btn">Run Another</a>
     </div>
 
     <div class="error-box" id="error-box">
-      <div class="error-title">✗ Analysis Failed</div>
+      <div class="chip chip-err">Failed</div>
+      <div class="error-title">Analysis failed</div>
       <div id="error-msg" class="error-msg"></div>
       <a href="/" class="retry-link">← Try again</a>
     </div>
+   </div>
   </div>
 </main>
 
 <footer>
-  <div class="footer-brand">Strategic Fit Engine <span>·</span> M&amp;A Intelligence</div>
+  <div class="footer-brand">Strategic Fit Engine · M&amp;A Intelligence</div>
   <div class="footer-right">AI-powered screening · Not for distribution</div>
 </footer>
 

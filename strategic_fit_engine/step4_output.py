@@ -1272,13 +1272,23 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
 </div>"""
 
 
+def _scope_label(ts: Dict) -> str:
+    """Industry · sub-sector for report headings; falls back to sub-sector alone."""
+    ind = (ts.get("industry") or "").strip()
+    sec = (ts.get("sector") or "").strip()
+    generic = ("", "all industries (cross-sector)", "all industries")
+    if ind and ind.lower() not in generic:
+        return f"{ind} \u00b7 {sec}" if sec else ind
+    return sec
+
+
 # ── Section 1: Executive Summary ─────────────────────────────────────────────
 
 def sec_exec(bp: Dict, ts: Dict, dcf: Optional[Dict] = None) -> str:
     targets   = ts.get("targets",[])
     top3      = sorted([t for t in targets if t.get("rank",99)<=3], key=lambda x: x.get("rank",99))
     buyer     = _h(bp.get("buyer",""))
-    sector    = _h(ts.get("sector",""))
+    sector    = _h(_scope_label(ts))
     geo       = _h(ts.get("geography",""))
     n         = len(targets)
     maxs      = targets[0].get("max_score",35) if targets else 35
@@ -2595,7 +2605,7 @@ def _data_sources_box() -> str:
 
 def build_html(bp: Dict, ts: Dict) -> str:
     buyer   = _h(bp.get("buyer",""))
-    sector  = _h(ts.get("sector",""))
+    sector  = _h(_scope_label(ts))
     geo     = _h(ts.get("geography",""))
     now     = datetime.now().strftime("%d %B %Y")
     is_sell = (ts.get("mode") == "sell")
