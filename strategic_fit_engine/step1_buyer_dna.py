@@ -26,8 +26,10 @@ from dotenv import load_dotenv
 
 try:  # package import (normal path, via app.py)
     from strategic_fit_engine import industry as _industry
+    from strategic_fit_engine import registry as _registry
 except ImportError:  # direct script execution from inside the package dir
     import industry as _industry
+    import registry as _registry
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -228,6 +230,11 @@ def run(buyer: str, sector: str, size_range: str = "Any size",
     prompt = COMBINED_STRATEGY_PROMPT.format(buyer=buyer, sector=sector, size_range=size_range)
     # Industry scope leads the prompt so it frames every downstream judgement.
     prompt = _industry.context_block(industry, sector) + prompt
+    # Companies House evidence (arbitrex DB): the buyer's real UK acquisitions. No-op if unset.
+    reg_acqs = _registry.buyer_acquisitions(buyer) if _registry.is_enabled() else []
+    if reg_acqs:
+        print(f"  Companies House: {len(reg_acqs)} UK acquisitions found for {buyer}")
+        prompt = _registry.buyer_block(buyer, reg_acqs) + prompt
     print(f"  Researching {buyer} via web search (financials, acquisitions, competitors)...")
 
     raw = _with_retry(
@@ -243,6 +250,8 @@ def run(buyer: str, sector: str, size_range: str = "Any size",
         raise ValueError(f"Failed to parse Step 1 JSON. Raw saved to {debug_path}.\n{e}")
 
     profile = validate_profile(profile)
+    if reg_acqs:
+        profile["registry_acquisitions"] = _registry.to_json(reg_acqs)
     save(profile)
     return profile
 

@@ -10,3 +10,4 @@ gunicorn
 python-docx
 python-pptx
 openpyxl
+psycopg[binary]>=3.1

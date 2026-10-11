@@ -27,8 +27,10 @@ from dotenv import load_dotenv
 
 try:  # package import (normal path, via app.py)
     from strategic_fit_engine import industry as _industry
+    from strategic_fit_engine import registry as _registry
 except ImportError:  # direct script execution from inside the package dir
     import industry as _industry
+    import registry as _registry
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -285,7 +287,8 @@ def save(data: Dict, path: Optional[Path] = None) -> None:
 def _run_batch(client, sector: str, geography: str, buyer: str,
                strategic_summary: str, target_brief: str, dry_powder: str,
                count: int, exclude: List[str], batch_label: str,
-               size_range: str = "Any size", industry: str = "") -> List[Dict]:
+               size_range: str = "Any size", industry: str = "",
+               registry_block: str = "") -> List[Dict]:
     """Run a single discovery batch, returning a list of target dicts."""
     exclude_clause = (
         f"Do NOT repeat these already-identified companies: {', '.join(exclude)}.\n"
@@ -308,7 +311,7 @@ def _run_batch(client, sector: str, geography: str, buyer: str,
         size_clause=size_clause,
     )
 
-    prompt = _industry.context_block(industry, sector) + prompt
+    prompt = _industry.context_block(industry, sector) + registry_block + prompt
 
     raw = _with_retry(lambda: _call_claude_with_search(client, prompt, max_tokens=6000))
 
@@ -338,13 +341,17 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
     dry_powder        = bp.get("dry_powder", "Deal size parameters not specified.")
 
     print(f"  Building buyer-led longlist for {buyer} in {sector} / {geography}...")
+    # Companies House candidates (arbitrex DB) sized like the buyer's past UK targets. No-op if unset.
+    registry_block = _registry.target_candidates_block(bp, sector, geography, industry)
+    if registry_block:
+        print(f"  Companies House: {registry_block.count(chr(10) + '  - ')} UK candidate companies added to the brief")
 
     # Batch A — first 6 companies
     print(f"  Batch 1/2: identifying first 6 targets...")
     batch_a = _run_batch(client, sector, geography, buyer,
                          strategic_summary, target_brief, dry_powder,
                          count=6, exclude=[], batch_label="A", size_range=size_range,
-                         industry=industry)
+                         industry=industry, registry_block=registry_block)
 
     # Batch B — up to 4 more, excluding batch A; non-fatal if it fails
     exclude_names = [t.get("name", "") for t in batch_a if t.get("name")]
@@ -354,7 +361,8 @@ def run(sector: str, geography: str, buyer_profile: Optional[Dict] = None,
         batch_b = _run_batch(client, sector, geography, buyer,
                              strategic_summary, target_brief, dry_powder,
                              count=4, exclude=exclude_names, batch_label="B",
-                             size_range=size_range, industry=industry)
+                             size_range=size_range, industry=industry,
+                             registry_block=registry_block)
     except Exception as e:
         print(f"  [WARNING] Batch B failed ({e}). Continuing with batch A only.")
 

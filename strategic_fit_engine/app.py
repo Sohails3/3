@@ -176,6 +176,22 @@ def _run_pipeline(company: str, sector: str, geography: str,
         if n_tgt > 5:
             _add(session_id, "log", f"   · ... and {n_tgt - 5} more")
 
+        # ── Step 2.4 — Companies House registry check (arbitrex DB) ──────
+        from strategic_fit_engine import registry
+        if registry.is_enabled():
+            _add(session_id, "log", "   Checking UK companies against the Companies House registry...")
+            tr["targets"] = registry.annotate(tr.get("targets", []))
+            rc = registry.annotation_summary(tr.get("targets", []))
+            _add(session_id, "log",
+                 f"   Companies House: {rc['matched']} matched, {rc['with_accounts']} with filed accounts"
+                 + (f", {rc['group_owned']} already group-owned" if rc["group_owned"] else ""))
+            if not is_sell:
+                for t in tr.get("targets", []):
+                    ch = t.get("companies_house") or {}
+                    if ch.get("majority_owner"):
+                        _add(session_id, "log", f"   ⚠ {t['name']}: owned by {ch['majority_owner']}"
+                                                f" since {ch.get('owned_since') or 'n/a'} — not independent")
+
         # ── Step 2.5 — Data Quality & Verification (Bigdata.com) ─────────
         from strategic_fit_engine import verification
         if verification.is_enabled():

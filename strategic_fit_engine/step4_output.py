@@ -121,6 +121,34 @@ def _verif_badge(t) -> str:
             f'font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:3px;'
             f'color:#fff;background:{color}">{label}</span>')
 
+def _ch_badge(t) -> str:
+    """Companies House registry badge (arbitrex DB): company number, filed figures, owner."""
+    ch = t.get("companies_house") or {}
+    if not ch.get("company_number"):
+        return ""
+    bits = []
+    if ch.get("accounts_period_end"):
+        figs = []
+        if ch.get("revenue_gbp") is not None:
+            figs.append(f"revenue £{ch['revenue_gbp']/1e6:.1f}m")
+        if ch.get("net_assets_gbp") is not None:
+            figs.append(f"net assets £{ch['net_assets_gbp']/1e6:.1f}m")
+        if ch.get("employees"):
+            figs.append(f"{ch['employees']} staff")
+        bits.append(f"Accounts to {ch['accounts_period_end']}: " + (", ".join(figs) or "filed"))
+    if ch.get("uk_acquisitions"):
+        bits.append(f"{ch['uk_acquisitions']} UK acquisitions on the register")
+    tip = _h(f"{ch.get('registered_name','')} · " + " · ".join(bits)) if bits else _h(ch.get("registered_name", ""))
+    out = (f'<span title="{tip}" style="display:inline-block;margin-top:6px;margin-left:4px;font-size:10px;'
+           f'font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:3px;color:#fff;'
+           f'background:#3d4f63">Companies House · {_h(ch["company_number"])}</span>')
+    if ch.get("majority_owner"):
+        since = f" since {ch['owned_since'][:4]}" if ch.get("owned_since") else ""
+        out += (f'<span style="display:inline-block;margin-top:6px;margin-left:4px;font-size:10px;'
+                f'font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:3px;color:#fff;'
+                f'background:#9a3b00">Owned by {_h(ch["majority_owner"])}{since}</span>')
+    return out
+
 def _vmark(t, key) -> str:
     """Per-metric trust marker: green ✓ (source-verified/corrected) or muted 'unverified est.'.
     Empty when verification didn't run for this metric."""
@@ -1249,7 +1277,7 @@ def _modal_html(t: Dict, criteria: List[Dict]) -> str:
     <div style="font-size:11px;color:#aab3c7;margin-top:3px">
       {_h(t.get('country',''))} · {_h(t.get('funding_stage',''))} · {_capital_stat(t)[0]}: {_capital_stat(t)[1]}{_vmark(t,'raised')} · ~{_fmt_emp(t.get('employees'))}{_vmark(t,'employees')} employees{meta_extra}
     </div>
-    {_verif_badge(t)}
+    {_verif_badge(t)}{_ch_badge(t)}
     {_provenance(t)}
   </div>
   <button class="mx" onclick="closeModal()">✕</button>
