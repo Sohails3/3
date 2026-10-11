@@ -125,7 +125,8 @@ def _sic_text(sics) -> str:
 _ACQ_SQL = """
 with buyer_cos as (
   -- companies named like the buyer, plus companies the buyer-named entity controls
-  select company_number from companies where name ~* %(rx)s
+  select company_number from companies
+  where norm_name(name) like %(prefix)s and norm_name(name) ~ %(wrx)s
   union
   select p.company_number from pscs p
   where p.kind like 'corporate%%' and p.ceased_on is null and p.name ~* %(rx)s
@@ -160,11 +161,17 @@ def _name_variants(name: str) -> List[str]:
     return out
 
 
+def _name_params(core: str) -> Dict[str, str]:
+    """Query params for matching a normalised name: indexed prefix + word-boundary check."""
+    esc = core.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return {"rx": r"^(the )?" + re.escape(core) + r"\M",   # \M = end of word in Postgres regex
+            "prefix": esc + "%", "wrx": "^" + re.escape(core) + r"\M", "core": core}
+
+
 def buyer_acquisitions(buyer: str) -> List[Dict]:
     rows = []
     for core in _name_variants(buyer):
-        rx = r"^(the )?" + re.escape(core) + r"\M"   # \M = end of word in Postgres regex
-        rows = _query(_ACQ_SQL, {"rx": rx})
+        rows = _query(_ACQ_SQL, _name_params(core))
         if rows:
             break
     return [dict(acquirer=r[0], deal_date=r[1], confidence=float(r[2]), number=r[3], name=r[4],
@@ -296,8 +303,8 @@ def target_candidates_block(buyer_profile: Dict, sector: str, geography: str,
 
 _SELLER_SQL = """
 select company_number, name, sic_codes from companies
-where status = 'Active' and lower(name) ~ %(rx)s
-order by (lower(name) = %(exact)s) desc, incorporated_on limit 1
+where status = 'Active' and norm_name(name) like %(prefix)s and norm_name(name) ~ %(wrx)s
+order by (norm_name(name) = %(core)s) desc, incorporated_on limit 1
 """
 
 _ACQUIRER_SQL = """
@@ -331,7 +338,7 @@ def acquirer_candidates(seller: str, sector: str, geography: str, industry: str 
     sics = None
     core = core_name(seller)
     if len(core) >= 3:
-        rows = _query(_SELLER_SQL, {"rx": r"^(the )?" + re.escape(core) + r"\M", "exact": seller.lower()})
+        rows = _query(_SELLER_SQL, _name_params(core))
         if rows:
             sics = [s for s in rows[0][2] if s in SLICE_SICS] or None
     if not sics:
@@ -363,16 +370,14 @@ def acquirer_candidates_block(seller: str, sector: str, geography: str, industry
 # ---------------------------------------------------------------------------
 
 _MATCH_SQL = """
-with wanted(core) as (select unnest(%(cores)s::text[]))
-select w.core, c.company_number, c.name, c.status, c.incorporated_on, c.sic_codes,
+with wanted(raw) as (select unnest(%(names)s::text[]))
+select w.raw, c.company_number, c.name, c.status, c.incorporated_on, c.sic_codes,
        f.period_end, f.revenue, f.net_assets, f.employees,
        own.name as owner, own.notified_on as owned_since,
        (select count(*) from deals d where d.acquirer_number = c.company_number
           and d.deal_type = 'acquisition') as uk_acquisitions
 from wanted w
-join companies c on regexp_replace(regexp_replace(lower(c.name),
-       '\\m(the|limited|ltd|plc|llp|holdings?|group|uk|co|company)\\M\\.?', ' ', 'g'),
-       '[^a-z0-9& ]', ' ', 'g') ~ ('^\\s*' || w.core || '\\s*$')
+join companies c on norm_name(c.name) = norm_name(w.raw) and norm_name(w.raw) <> ''
 left join lateral (select * from financials f where f.company_number = c.company_number
                    order by period_end desc limit 1) f on true
 left join lateral (select p.name, p.notified_on from pscs p
@@ -392,17 +397,15 @@ def annotate(targets: List[Dict]) -> List[Dict]:
     uk = [t for t in targets if any(h in (t.get("country") or "").lower()
                                     for h in ("uk", "united kingdom", "england", "scotland", "wales",
                                               "britain", "northern ireland"))]
-    cores = sorted({re.sub(r"\s+", r"\\s+", re.escape(core_name(t.get("name", ""))))
-                    for t in uk if len(core_name(t.get("name", ""))) >= 3})
-    if not cores:
+    names = sorted({t.get("name", "") for t in uk if len(core_name(t.get("name", ""))) >= 3})
+    if not names:
         return targets
-    rows = _query(_MATCH_SQL, {"cores": cores})
+    rows = _query(_MATCH_SQL, {"names": names})
     by_core: Dict[str, List[tuple]] = {}
     for r in rows:
         by_core.setdefault(r[0], []).append(r)
     for t in uk:
-        key = re.sub(r"\s+", r"\\s+", re.escape(core_name(t.get("name", ""))))
-        hits = by_core.get(key) or []
+        hits = by_core.get(t.get("name", "")) or []
         if not hits:
             continue
         # prefer the trading company with the most recent accounts
