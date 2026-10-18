@@ -898,7 +898,7 @@ var _copy = {
     companyHint: 'The company seeking an exit. The engine will profile its appeal and identify ideal acquirers.',
     companyPlaceholder: 'e.g. Attensi, Leapsome, Wayflyer',
     sectorLabel: 'Seller Sub-Sector',
-    sectorHint: 'The seller\'s specific sub-sector within the chosen industry — used to find relevant acquirers.',
+    sectorHint: 'The seller’s specific sub-sector within the chosen industry — used to find relevant acquirers.',
     sizeLabel: 'Seller ARR Range',
     sizeHint: 'Approximate seller ARR — used to match acquirer financial capacity.',
     geoLabel: 'Acquirer Geography',
