@@ -321,11 +321,21 @@ def run_analysis():
 def stream():
     sid = session.get("sid")
 
+    # On reconnect the browser sends Last-Event-ID; resume after that message
+    # instead of replaying the whole log.
+    try:
+        start = int(request.headers.get("Last-Event-ID", "0") or 0)
+    except ValueError:
+        start = 0
+
     def generate():
         if not sid or sid not in _jobs:
             yield f"data: {json.dumps({'type': 'end', 'error': None})}\n\n"
             return
-        last = 0
+        # Ask the browser to retry quickly if the connection drops.
+        yield "retry: 3000\n\n"
+        last = start
+        last_sent = time.time()
         while True:
             with _jobs_lock:
                 job   = _jobs.get(sid, {})
@@ -333,13 +343,19 @@ def stream():
                 done  = job.get("done", False)
                 error = job.get("error")
 
-            for msg in msgs[last:]:
-                yield f"data: {json.dumps(msg)}\n\n"
-            last = len(msgs)
+            for i, msg in enumerate(msgs[last:], start=last + 1):
+                yield f"id: {i}\ndata: {json.dumps(msg)}\n\n"
+                last_sent = time.time()
+            last = max(last, len(msgs))
 
             if done or error:
                 yield f"data: {json.dumps({'type': 'end', 'error': error})}\n\n"
                 break
+            # Heartbeat: long quiet steps (e.g. verification) otherwise leave the
+            # connection idle, and proxies / antivirus close idle connections.
+            if time.time() - last_sent > 15:
+                yield ": keep-alive\n\n"
+                last_sent = time.time()
             time.sleep(0.25)
 
     resp = Response(generate(), mimetype="text/event-stream")
@@ -1357,9 +1373,27 @@ src.onmessage = function(e) {{
   appendLog(msg);
 }};
 
+// The browser reconnects automatically (resuming from the last message id).
+// Only give up if the connection stays down for 2 minutes.
+let lostSince = null, lostNoted = false;
+src.onopen = function() {{
+  if (lostNoted) appendLog({{type:'log', text:'Reconnected — continuing.'}});
+  lostSince = null; lostNoted = false;
+}};
 src.onerror = function() {{
-  src.close();
-  appendLog({{type:'error', text:'Connection to server lost. Check terminal for errors.'}});
+  if (src.readyState === EventSource.CLOSED) {{
+    appendLog({{type:'error', text:'Connection to server lost. The analysis may still finish — try opening /report in a few minutes.'}});
+    return;
+  }}
+  if (!lostSince) lostSince = Date.now();
+  if (!lostNoted) {{
+    appendLog({{type:'log', text:'Connection interrupted — reconnecting...'}});
+    lostNoted = true;
+  }}
+  if (Date.now() - lostSince > 120000) {{
+    src.close();
+    appendLog({{type:'error', text:'Connection to server lost. The analysis may still finish — try opening /report in a few minutes.'}});
+  }}
 }};
 </script>
 </body>
